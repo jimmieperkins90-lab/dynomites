@@ -13,13 +13,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing or incorrect secret." }, { status: 401 });
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const leagueId = req.nextUrl.searchParams.get("league_id") ?? process.env.SLEEPER_LEAGUE_ID;
 
   if (!supabaseUrl || !serviceRoleKey || !leagueId) {
     return NextResponse.json(
-      { error: "Missing env vars: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SLEEPER_LEAGUE_ID." },
+      { error: "Missing env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SLEEPER_LEAGUE_ID." },
       { status: 500 }
     );
   }
@@ -29,6 +29,20 @@ export async function GET(req: NextRequest) {
     await runSleeperSync({ supabaseUrl, serviceRoleKey, leagueId }, (line) => lines.push(line));
     return NextResponse.json({ ok: true, log: lines });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, log: lines, error: String(e?.message ?? e) }, { status: 500 });
+    const cause = e?.cause ? String(e.cause?.message ?? e.cause) : undefined;
+    return NextResponse.json(
+      {
+        ok: false,
+        log: lines,
+        error: String(e?.message ?? e),
+        cause,
+        // Sanity-check env vars without leaking the secret key itself.
+        debug: {
+          supabaseUrlLooksRight: supabaseUrl.startsWith("https://") && supabaseUrl.includes(".supabase.co"),
+          serviceRoleKeyLength: serviceRoleKey.length,
+        },
+      },
+      { status: 500 }
+    );
   }
 }
