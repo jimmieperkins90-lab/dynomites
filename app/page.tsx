@@ -14,7 +14,7 @@ type StandingsRow = {
   points_against: number | null;
   final_rank: number | null;
   made_playoffs: boolean;
-  managers: { display_name: string } | null;
+  managers: { display_name: string; real_name: string | null } | null;
 };
 
 async function getCurrentSeasonStandings() {
@@ -35,7 +35,7 @@ async function getCurrentSeasonStandings() {
   const { data: standings } = await supabase
     .from("team_seasons")
     .select(
-      "id, team_name, wins, losses, ties, points_for, points_against, final_rank, made_playoffs, managers(display_name)"
+      "id, team_name, wins, losses, ties, points_for, points_against, final_rank, made_playoffs, managers(display_name, real_name)"
     )
     .eq("season_id", season.id)
     .order("wins", { ascending: false })
@@ -106,7 +106,7 @@ export default async function HomePage() {
                   >
                     <td className="px-4 py-3">{row.team_name ?? "—"}</td>
                     <td className="px-4 py-3 text-bone/70">
-                      {row.managers?.display_name ?? "—"}
+                      {row.managers?.real_name ?? row.managers?.display_name ?? "—"}
                     </td>
                     <td className="px-4 py-3 font-mono">
                       {row.wins}-{row.losses}
