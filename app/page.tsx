@@ -1,6 +1,8 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
-export const revalidate = 300; // 5 min -- data only changes on sync, no need to hit DB every request
+// Always render at request time, never at build time -- this page depends on
+// env vars and a live DB, neither of which should block a build.
+export const dynamic = "force-dynamic";
 
 type StandingsRow = {
   id: string;
@@ -16,6 +18,11 @@ type StandingsRow = {
 };
 
 async function getCurrentSeasonStandings() {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { season: null, standings: [] as StandingsRow[], configError: true };
+  }
+
   const { data: season } = await supabase
     .from("seasons")
     .select("id, year")
@@ -38,7 +45,7 @@ async function getCurrentSeasonStandings() {
 }
 
 export default async function HomePage() {
-  const { season, standings } = await getCurrentSeasonStandings();
+  const { season, standings, configError } = await getCurrentSeasonStandings();
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -54,9 +61,21 @@ export default async function HomePage() {
         </p>
       </header>
 
-      {!season ? (
+      {configError ? (
+        <div className="fossil-card bg-rust/10 p-8 text-bone">
+          <p className="font-mono text-sm uppercase tracking-wide text-rust">
+            Configuration needed
+          </p>
+          <p className="mt-2 text-bone/80">
+            SUPABASE_URL and/or SUPABASE_ANON_KEY aren&apos;t set for this
+            deployment. Check Vercel &rarr; Settings &rarr; Environment
+            Variables, make sure Production is checked for each one, then
+            redeploy.
+          </p>
+        </div>
+      ) : !season ? (
         <div className="fossil-card bg-bone/5 p-8 text-bone/70">
-          No season data yet -- run <code className="font-mono">npm run sync</code> to
+          No season data yet -- visit <code className="font-mono">/api/sync?secret=...</code> to
           pull the first season in from Sleeper.
         </div>
       ) : (
