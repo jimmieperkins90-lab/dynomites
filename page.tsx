@@ -100,15 +100,7 @@ export default async function HomePage({
             {allYears.length > 1 && (
               <nav className="flex gap-2 font-mono text-sm">
                 {allYears.map((y) => (
-                  <a
-                    key={y}
-                    href={y === allYears[0] ? "/" : `/?year=${y}`}
-                    className={
-                      y === season.year
-                        ? "text-fuse underline underline-offset-4"
-                        : "text-bone/50 hover:text-bone"
-                    }
-                  >
+                  <a key={y} href={y === allYears[0] ? "/" : `/?year=${y}`} className={y === season.year ? "text-fuse underline underline-offset-4" : "text-bone/50 hover:text-bone"}>
                     {y}
                   </a>
                 ))}
