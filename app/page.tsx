@@ -17,20 +17,24 @@ type StandingsRow = {
   managers: { display_name: string; real_name: string | null } | null;
 };
 
-async function getCurrentSeasonStandings() {
+async function getSeasonStandings(requestedYear?: number) {
   const supabase = getSupabase();
   if (!supabase) {
-    return { season: null, standings: [] as StandingsRow[], configError: true };
+    return { season: null, standings: [] as StandingsRow[], allYears: [] as number[], configError: true };
   }
 
-  const { data: season } = await supabase
+  const { data: allSeasons } = await supabase
     .from("seasons")
     .select("id, year")
-    .order("year", { ascending: false })
-    .limit(1)
-    .single();
+    .order("year", { ascending: false });
 
-  if (!season) return { season: null, standings: [] as StandingsRow[] };
+  if (!allSeasons?.length) {
+    return { season: null, standings: [] as StandingsRow[], allYears: [] as number[] };
+  }
+
+  const season = requestedYear
+    ? allSeasons.find((s) => s.year === requestedYear) ?? allSeasons[0]
+    : allSeasons[0];
 
   const { data: standings } = await supabase
     .from("team_seasons")
@@ -41,11 +45,20 @@ async function getCurrentSeasonStandings() {
     .order("wins", { ascending: false })
     .order("points_for", { ascending: false });
 
-  return { season, standings: (standings ?? []) as unknown as StandingsRow[] };
+  return {
+    season,
+    standings: (standings ?? []) as unknown as StandingsRow[],
+    allYears: allSeasons.map((s) => s.year),
+  };
 }
 
-export default async function HomePage() {
-  const { season, standings, configError } = await getCurrentSeasonStandings();
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: { year?: string };
+}) {
+  const requestedYear = searchParams.year ? Number(searchParams.year) : undefined;
+  const { season, standings, allYears, configError } = await getSeasonStandings(requestedYear);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -80,9 +93,28 @@ export default async function HomePage() {
         </div>
       ) : (
         <section>
-          <h2 className="mb-4 font-display text-3xl text-amber">
-            {season.year} Standings
-          </h2>
+          <div className="mb-4 flex items-baseline justify-between">
+            <h2 className="font-display text-3xl text-amber">
+              {season.year} Standings
+            </h2>
+            {allYears.length > 1 && (
+              <nav className="flex gap-2 font-mono text-sm">
+                {allYears.map((y) => (
+                  
+                    key={y}
+                    href={y === allYears[0] ? "/" : `/?year=${y}`}
+                    className={
+                      y === season.year
+                        ? "text-fuse underline underline-offset-4"
+                        : "text-bone/50 hover:text-bone"
+                    }
+                  >
+                    {y}
+                  </a>
+                ))}
+              </nav>
+            )}
+          </div>
           <div className="fossil-card overflow-hidden bg-bone/5">
             <table className="w-full border-separate border-spacing-0 text-left">
               <thead>
