@@ -15,11 +15,13 @@ export type GameResult = {
   home_manager_name: string;
   home_avatar: string | null;
   home_points: number | null;
+  home_projected_points: number | null;
   away_team_season_id: string | null;
   away_team_name: string | null;
   away_manager_name: string | null;
   away_avatar: string | null;
   away_points: number | null;
+  away_projected_points: number | null;
 };
 
 export type LineupRow = {
@@ -30,6 +32,7 @@ export type LineupRow = {
   player_name: string | null;
   position: string | null;
   points: number | null;
+  projected_points: number | null;
   started: boolean;
 };
 
@@ -67,9 +70,6 @@ export type TeamGameScore = {
   opponent_points: number | null;
 };
 
-// Position sort order for box-score display. Exact roster slot (which WR/FLEX)
-// isn't reliably derivable from Sleeper's API, so this groups by actual NFL
-// position only.
 const POSITION_ORDER: Record<string, number> = {
   QB: 1,
   RB: 2,
@@ -185,9 +185,6 @@ export async function getChampion(year: number): Promise<StandingsRow | null> {
   return standings.find((r) => r.final_rank === 1) ?? null;
 }
 
-// Best regular-season record within each division. Division must be set
-// manually on team_seasons (see migration note) since the sync script
-// doesn't currently pull it from Sleeper.
 export async function getDivisionChampions(year: number): Promise<StandingsRow[]> {
   const standings = await getStandingsForSeason(year);
   const byDivision = new Map<string, StandingsRow>();
@@ -293,10 +290,6 @@ export async function getLineupsForMatchup(
   return { starters, bench };
 }
 
-// Fetches ONLY starters for a batch of matchup ids in one (or a few) round
-// trips, grouped by matchup_id. Used by the games list page so every row can
-// unfold in place without a request per game. Batches the `.in()` filter to
-// keep request URLs a reasonable size.
 export async function getStartersForMatchupIds(
   matchupIds: string[]
 ): Promise<Record<string, LineupRow[]>> {
@@ -358,10 +351,8 @@ export async function getAllPlayedGames(): Promise<GameResult[]> {
   return data as GameResult[];
 }
 
-// Head-to-head record for every manager pair, built from the flattened
-// per-team score rows. Returns manager -> opponent -> {wins, losses, ties}.
 export function buildHeadToHead(rows: TeamGameScore[]) {
-  const table: Record<
+  const table: Record
     string,
     Record<string, { wins: number; losses: number; ties: number }>
   > = {};
