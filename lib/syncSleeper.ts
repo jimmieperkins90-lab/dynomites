@@ -7,8 +7,10 @@ import {
   getWinnersBracket,
   getLosersBracket,
   getPlayerMap,
+  getWeekProjections,
   type SleeperMatchup,
   type BracketMatch,
+  type PlayerProjections,
 } from "./sleeper";
 
 type Logger = (line: string) => void;
@@ -116,7 +118,7 @@ export async function runSleeperSync(
     return `Round ${r}`;
   };
 
-  const bracketMatchupInfo = new Map<
+  const bracketMatchupInfo = new Map
     number,
     { phase: "winners_bracket" | "losers_bracket"; week: number; round_game: string }
   >();
@@ -177,6 +179,16 @@ export async function runSleeperSync(
     if (!weekMatchups.length) {
       log(`Week ${week}: no data yet, stopping sync.`);
       break;
+    }
+
+    // Player projections for this week (used to fill in projected_points on
+    // lineup rows for games that haven't been played yet). Best-effort --
+    // an unofficial endpoint failing shouldn't take down the whole sync.
+    let weekProjections: PlayerProjections = {};
+    try {
+      weekProjections = await getWeekProjections(String(year), week);
+    } catch (e) {
+      log(`Week ${week}: projections fetch failed, continuing without them. ${e}`);
     }
 
     const byMatchupId = new Map<number, SleeperMatchup[]>();
@@ -254,6 +266,7 @@ export async function runSleeperSync(
               player_name: playerMap[playerId].full_name,
               position: playerMap[playerId].position,
               points: raw.players_points?.[playerId] ?? null,
+              projected_points: weekProjections[playerId] ?? null,
               started: starterSet.has(playerId),
             };
           })
