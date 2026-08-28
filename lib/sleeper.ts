@@ -89,9 +89,7 @@ export function getLosersBracket(leagueId: string) {
 }
 
 export function getNflState() {
-  return get<{ week: number; season: string; season_type: string }>(
-    `${BASE}/state/nfl`
-  );
+  return get<{ week: number; season: string; season_type: string }>(`${BASE}/state/nfl`);
 }
 
 // The full player list is ~5MB and Sleeper asks that you not hammer this
@@ -101,7 +99,10 @@ const CACHE_DIR = path.join(os.tmpdir(), "dynomites-cache");
 const CACHE_FILE = path.join(CACHE_DIR, "players.json");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-export async function getPlayerMap(): Promise<Record<string, { full_name: string; position: string | null; team: string | null }>> {
+export type PlayerInfo = { full_name: string; position: string | null; team: string | null };
+export type PlayerMap = Record<string, PlayerInfo>;
+
+export async function getPlayerMap(): Promise<PlayerMap> {
   if (fs.existsSync(CACHE_FILE)) {
     const stat = fs.statSync(CACHE_FILE);
     if (Date.now() - stat.mtimeMs < CACHE_TTL_MS) {
@@ -110,10 +111,7 @@ export async function getPlayerMap(): Promise<Record<string, { full_name: string
   }
 
   const raw = await get<Record<string, any>>(`${BASE}/players/nfl`);
-  const trimmed: Record
-    string,
-    { full_name: string; position: string | null; team: string | null }
-  > = {};
+  const trimmed: PlayerMap = {};
   for (const [id, p] of Object.entries(raw)) {
     trimmed[id] = {
       full_name: p.full_name ?? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
