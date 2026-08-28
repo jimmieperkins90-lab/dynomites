@@ -120,6 +120,70 @@ export async function getGameById(id: string): Promise<GameResult | null> {
   return data as GameResult;
 }
 
+export type StandingsRow = {
+  team_season_id: string;
+  team_name: string | null;
+  manager_name: string;
+  avatar: string | null;
+  wins: number;
+  losses: number;
+  ties: number;
+  points_for: number | null;
+  points_against: number | null;
+  regular_season_rank: number | null;
+  final_rank: number | null;
+  made_playoffs: boolean;
+};
+
+export async function getStandingsForSeason(year: number): Promise<StandingsRow[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data: season, error: seasonError } = await supabase
+    .from("seasons")
+    .select("id")
+    .eq("year", year)
+    .maybeSingle();
+  if (seasonError || !season) return [];
+
+  const { data, error } = await supabase
+    .from("team_seasons")
+    .select(
+      "id, team_name, wins, losses, ties, points_for, points_against, regular_season_rank, final_rank, made_playoffs, managers(display_name, real_name, avatar)"
+    )
+    .eq("season_id", season.id);
+  if (error || !data) return [];
+
+  const rows: StandingsRow[] = data.map((row: any) => ({
+    team_season_id: row.id,
+    team_name: row.team_name,
+    manager_name: row.managers?.real_name ?? row.managers?.display_name ?? "Unknown",
+    avatar: row.managers?.avatar ?? null,
+    wins: row.wins,
+    losses: row.losses,
+    ties: row.ties,
+    points_for: row.points_for,
+    points_against: row.points_against,
+    regular_season_rank: row.regular_season_rank,
+    final_rank: row.final_rank,
+    made_playoffs: row.made_playoffs,
+  }));
+
+  rows.sort((a, b) => {
+    const rankA = a.final_rank ?? a.regular_season_rank ?? 999;
+    const rankB = b.final_rank ?? b.regular_season_rank ?? 999;
+    return rankA - rankB;
+  });
+
+  return rows;
+}
+
+export function sortStarters(a: LineupRow, b: LineupRow) {
+  const posDiff = positionRank(a.position) - positionRank(b.position);
+  if (posDiff !== 0) return posDiff;
+  return (b.points ?? 0) - (a.points ?? 0);
+}
+
 export async function getLineupsForMatchup(
   matchupId: string
 ): Promise<{ starters: LineupRow[]; bench: LineupRow[] }> {
@@ -132,18 +196,43 @@ export async function getLineupsForMatchup(
   if (error || !data) return { starters: [], bench: [] };
 
   const rows = data as LineupRow[];
-  const sortFn = (a: LineupRow, b: LineupRow) => {
-    const posDiff = positionRank(a.position) - positionRank(b.position);
-    if (posDiff !== 0) return posDiff;
-    return (b.points ?? 0) - (a.points ?? 0);
-  };
-
-  const starters = rows.filter((r) => r.started).sort(sortFn);
+  const starters = rows.filter((r) => r.started).sort(sortStarters);
   const bench = rows
     .filter((r) => !r.started)
     .sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
 
   return { starters, bench };
+}
+
+// Fetches ONLY starters for a batch of matchup ids in one (or a few) round
+// trips, grouped by matchup_id. Used by the games list page so every row can
+// unfold in place without a request per game. Batches the `.in()` filter to
+// keep request URLs a reasonable size.
+export async function getStartersForMatchupIds(
+  matchupIds: string[]
+): Promise<Record<string, LineupRow[]>> {
+  const supabase = getSupabase();
+  const grouped: Record<string, LineupRow[]> = {};
+  if (!supabase || matchupIds.length === 0) return grouped;
+
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < matchupIds.length; i += BATCH_SIZE) {
+    const batch = matchupIds.slice(i, i + BATCH_SIZE);
+    const { data, error } = await supabase
+      .from("lineups")
+      .select("*")
+      .in("matchup_id", batch)
+      .eq("started", true);
+    if (error || !data) continue;
+    for (const row of data as LineupRow[]) {
+      (grouped[row.matchup_id] ??= []).push(row);
+    }
+  }
+
+  for (const key of Object.keys(grouped)) {
+    grouped[key].sort(sortStarters);
+  }
+  return grouped;
 }
 
 export async function getCareerStats(): Promise<CareerStat[]> {
