@@ -9,6 +9,30 @@ function ScoreLine({ game }: { game: GameResult }) {
   const awayWon = played && (game.away_points ?? 0) > (game.home_points ?? 0);
   const hasOpponent = !!game.away_team_season_id;
 
+  const hasProjection =
+    !played &&
+    hasOpponent &&
+    game.home_projected_points != null &&
+    game.away_projected_points != null;
+
+  const homeDisplay = played
+    ? game.home_points != null
+      ? game.home_points.toFixed(1)
+      : "—"
+    : hasProjection
+    ? Number(game.home_projected_points).toFixed(1)
+    : "—";
+
+  const awayDisplay = !hasOpponent
+    ? "BYE"
+    : played
+    ? game.away_points != null
+      ? game.away_points.toFixed(1)
+      : "—"
+    : hasProjection
+    ? Number(game.away_projected_points).toFixed(1)
+    : "—";
+
   const row = (
     <div className="fossil-card bg-basalt border border-olive/30 px-5 py-4 flex items-center justify-between gap-4 hover:border-amber/60 transition-colors">
       <div className="flex-1 min-w-0">
@@ -17,14 +41,17 @@ function ScoreLine({ game }: { game: GameResult }) {
         </p>
         <p className="font-mono text-xs text-bone/50 truncate">{game.home_manager_name}</p>
       </div>
-      <div className="font-mono text-lg text-bone shrink-0 flex items-center gap-2">
-        <span className={homeWon ? "text-amber" : ""}>
-          {game.home_points != null ? game.home_points.toFixed(1) : "—"}
-        </span>
-        <span className="text-bone/30">-</span>
-        <span className={awayWon ? "text-amber" : ""}>
-          {hasOpponent ? (game.away_points != null ? game.away_points.toFixed(1) : "—") : "BYE"}
-        </span>
+      <div className="font-mono text-lg text-bone shrink-0 flex flex-col items-center gap-1">
+        <div className="flex items-center gap-2">
+          <span className={homeWon ? "text-amber" : ""}>{homeDisplay}</span>
+          <span className="text-bone/30">-</span>
+          <span className={awayWon ? "text-amber" : ""}>{awayDisplay}</span>
+        </div>
+        {hasProjection && (
+          <span className="font-mono text-[10px] text-bone/40 uppercase tracking-widest">
+            Projected
+          </span>
+        )}
       </div>
       <div className="flex-1 min-w-0 text-right">
         {hasOpponent ? (
