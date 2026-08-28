@@ -101,9 +101,7 @@ const CACHE_DIR = path.join(os.tmpdir(), "dynomites-cache");
 const CACHE_FILE = path.join(CACHE_DIR, "players.json");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-export async function getPlayerMap(): Promise
-  Record<string, { full_name: string; position: string | null; team: string | null }>
-> {
+export async function getPlayerMap(): Promise<Record<string, { full_name: string; position: string | null; team: string | null }>> {
   if (fs.existsSync(CACHE_FILE)) {
     const stat = fs.statSync(CACHE_FILE);
     if (Date.now() - stat.mtimeMs < CACHE_TTL_MS) {
