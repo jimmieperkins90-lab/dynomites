@@ -352,10 +352,7 @@ export async function getAllPlayedGames(): Promise<GameResult[]> {
 }
 
 export function buildHeadToHead(rows: TeamGameScore[]) {
-  const table: Record
-    string,
-    Record<string, { wins: number; losses: number; ties: number }>
-  > = {};
+    const table: Record<string, Record<string, { wins: number; losses: number; ties: number }>> = {};
 
   for (const row of rows) {
     if (!row.opponent_manager_name || row.points == null || row.opponent_points == null) {
