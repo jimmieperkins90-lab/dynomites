@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runSleeperSync } from "@/lib/syncSleeper";
 
-// Visit /api/sync?secret=YOUR_SYNC_SECRET in a browser to run the sync.
-// The secret just stops a random visitor from triggering writes to your DB --
-// it's read from the SYNC_SECRET env var (set it in Vercel, make it up
-// yourself, doesn't need to be fancy).
+// Two ways to trigger this route:
+// 1. Manually: visit /api/sync?secret=YOUR_SYNC_SECRET in a browser.
+// 2. Automatically: Vercel Cron (see vercel.json) calls this on a schedule,
+//    authenticating via an `Authorization: Bearer $CRON_SECRET` header that
+//    Vercel adds automatically -- this never appears in your repo.
 export const maxDuration = 60; // seconds -- a full backfill can take a little while
 
-export async function GET(req: NextRequest) {
+function isAuthorized(req: NextRequest): boolean {
+  const authHeader = req.headers.get("authorization");
+  if (process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`) {
+    return true;
+  }
   const secret = req.nextUrl.searchParams.get("secret");
-  if (!process.env.SYNC_SECRET || secret !== process.env.SYNC_SECRET) {
+  if (process.env.SYNC_SECRET && secret === process.env.SYNC_SECRET) {
+    return true;
+  }
+  return false;
+}
+
+export async function GET(req: NextRequest) {
+  if (!isAuthorized(req)) {
     return NextResponse.json({ error: "Missing or incorrect secret." }, { status: 401 });
   }
 
@@ -36,7 +48,6 @@ export async function GET(req: NextRequest) {
         log: lines,
         error: String(e?.message ?? e),
         cause,
-        // Sanity-check env vars without leaking the secret key itself.
         debug: {
           supabaseUrlLooksRight: supabaseUrl.startsWith("https://") && supabaseUrl.includes(".supabase.co"),
           serviceRoleKeyLength: serviceRoleKey.length,
