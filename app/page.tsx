@@ -1,129 +1,107 @@
-import { getSupabase } from "@/lib/supabase";
+import Link from "next/link";
+import { getSeasonYears, getStandingsForSeason, type StandingsRow } from "@/lib/queries";
 
-// Always render at request time, never at build time -- this page depends on
-// env vars and a live DB, neither of which should block a build.
 export const dynamic = "force-dynamic";
 
-type StandingsRow = {
-  id: string;
-  team_name: string | null;
-  wins: number;
-  losses: number;
-  ties: number;
-  points_for: number | null;
-  points_against: number | null;
-  final_rank: number | null;
-  made_playoffs: boolean;
-  managers: { display_name: string; real_name: string | null } | null;
-};
-
-async function getCurrentSeasonStandings() {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return { season: null, standings: [] as StandingsRow[], configError: true };
-  }
-
-  const { data: season } = await supabase
-    .from("seasons")
-    .select("id, year")
-    .order("year", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (!season) return { season: null, standings: [] as StandingsRow[] };
-
-  const { data: standings } = await supabase
-    .from("team_seasons")
-    .select(
-      "id, team_name, wins, losses, ties, points_for, points_against, final_rank, made_playoffs, managers(display_name, real_name)"
-    )
-    .eq("season_id", season.id)
-    .order("wins", { ascending: false })
-    .order("points_for", { ascending: false });
-
-  return { season, standings: (standings ?? []) as unknown as StandingsRow[] };
+function StandingsTable({ rows }: { rows: StandingsRow[] }) {
+  return (
+    <div className="fossil-card bg-basalt border border-olive/30 overflow-x-auto">
+      <table className="w-full text-sm min-w-[560px]">
+        <thead>
+          <tr className="text-left text-bone/50 font-mono text-xs uppercase">
+            <th className="px-4 py-3 font-normal">#</th>
+            <th className="px-4 py-3 font-normal">Team</th>
+            <th className="px-4 py-3 font-normal text-right">W</th>
+            <th className="px-4 py-3 font-normal text-right">L</th>
+            <th className="px-4 py-3 font-normal text-right">T</th>
+            <th className="px-4 py-3 font-normal text-right">PF</th>
+            <th className="px-4 py-3 font-normal text-right">PA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((team) => {
+            const isChampion = team.final_rank === 1;
+            return (
+              <tr key={team.team_season_id} className="border-t border-olive/10">
+                <td className="px-4 py-2.5 font-mono text-bone/60">
+                  {team.final_rank ?? team.regular_season_rank ?? "—"}
+                </td>
+                <td className="px-4 py-2.5">
+                  <p className={`font-body ${isChampion ? "text-fuse" : "text-bone"}`}>
+                    {isChampion && "🏆 "}
+                    {team.team_name ?? team.manager_name}
+                  </p>
+                  <p className="font-mono text-xs text-bone/50">{team.manager_name}</p>
+                </td>
+                <td className="px-4 py-2.5 font-mono text-right text-bone">{team.wins}</td>
+                <td className="px-4 py-2.5 font-mono text-right text-bone">{team.losses}</td>
+                <td className="px-4 py-2.5 font-mono text-right text-bone/60">{team.ties}</td>
+                <td className="px-4 py-2.5 font-mono text-right text-bone">
+                  {team.points_for != null ? team.points_for.toFixed(1) : "—"}
+                </td>
+                <td className="px-4 py-2.5 font-mono text-right text-bone/60">
+                  {team.points_against != null ? team.points_against.toFixed(1) : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-export default async function HomePage() {
-  const { season, standings, configError } = await getCurrentSeasonStandings();
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const years = await getSeasonYears();
+
+  if (years.length === 0) {
+    return (
+      <main className="max-w-3xl mx-auto px-4 py-10">
+        <h1 className="font-display text-4xl text-bone tracking-wide mb-4">Dyno Mites</h1>
+        <p className="font-body text-bone/70">
+          No seasons found. Check that the site is connected to Supabase and a sync has run.
+        </p>
+      </main>
+    );
+  }
+
+  const params = await searchParams;
+  const requestedYear = params.season ? parseInt(params.season, 10) : undefined;
+  const activeYear = years.includes(requestedYear ?? -1) ? (requestedYear as number) : years[0];
+
+  const standings = await getStandingsForSeason(activeYear);
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <header className="mb-10">
-        <p className="font-mono text-sm uppercase tracking-widest text-amber">
-          Est. 2025
-        </p>
-        <h1 className="font-display text-6xl leading-none text-bone">
-          Dyno Mites
-        </h1>
-        <p className="mt-2 font-body text-bone/70">
-          League history, standings, and box scores.
-        </p>
-      </header>
-
-      {configError ? (
-        <div className="fossil-card bg-rust/10 p-8 text-bone">
-          <p className="font-mono text-sm uppercase tracking-wide text-rust">
-            Configuration needed
-          </p>
-          <p className="mt-2 text-bone/80">
-            SUPABASE_URL and/or SUPABASE_ANON_KEY aren&apos;t set for this
-            deployment. Check Vercel &rarr; Settings &rarr; Environment
-            Variables, make sure Production is checked for each one, then
-            redeploy.
-          </p>
-        </div>
-      ) : !season ? (
-        <div className="fossil-card bg-bone/5 p-8 text-bone/70">
-          No season data yet -- visit <code className="font-mono">/api/sync?secret=...</code> to
-          pull the first season in from Sleeper.
-        </div>
-      ) : (
-        <section>
-          <h2 className="mb-4 font-display text-3xl text-amber">
-            {season.year} Standings
-          </h2>
-          <div className="fossil-card overflow-hidden bg-bone/5">
-            <table className="w-full border-separate border-spacing-0 text-left">
-              <thead>
-                <tr className="font-mono text-xs uppercase tracking-wide text-bone/60">
-                  <th className="px-4 py-3">Team</th>
-                  <th className="px-4 py-3">Manager</th>
-                  <th className="px-4 py-3">W-L-T</th>
-                  <th className="px-4 py-3">PF</th>
-                  <th className="px-4 py-3">PA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {standings.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={
-                      row.final_rank === 1
-                        ? "bg-fuse/10 font-medium text-fuse"
-                        : "text-bone"
-                    }
-                  >
-                    <td className="px-4 py-3">{row.team_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-bone/70">
-                      {row.managers?.real_name ?? row.managers?.display_name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      {row.wins}-{row.losses}
-                      {row.ties ? `-${row.ties}` : ""}
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      {row.points_for?.toFixed(1) ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      {row.points_against?.toFixed(1) ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <main className="max-w-3xl mx-auto px-4 py-10">
+      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+        <h1 className="font-display text-4xl text-bone tracking-wide">Standings</h1>
+        {years.length > 1 && (
+          <div className="flex gap-2">
+            {years.map((year) => (
+              <Link
+                key={year}
+                href={`/?season=${year}`}
+                className={`font-mono text-sm px-3 py-1.5 border rounded ${
+                  year === activeYear
+                    ? "bg-amber text-basalt border-amber"
+                    : "border-olive/40 text-bone/70 hover:border-amber/60"
+                }`}
+              >
+                {year}
+              </Link>
+            ))}
           </div>
-        </section>
+        )}
+      </div>
+
+      {standings.length === 0 ? (
+        <p className="font-body text-bone/60">No standings data for {activeYear} yet.</p>
+      ) : (
+        <StandingsTable rows={standings} />
       )}
     </main>
   );
