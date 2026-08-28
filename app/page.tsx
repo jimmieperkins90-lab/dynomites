@@ -1,67 +1,74 @@
 import Link from "next/link";
-import { getSeasonYears, getStandingsForSeason, type StandingsRow } from "@/lib/queries";
+import {
+  getSeasonYears,
+  getChampion,
+  getDivisionChampions,
+  type StandingsRow,
+} from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-function StandingsTable({ rows }: { rows: StandingsRow[] }) {
+function ChampionBanner({ champion, year }: { champion: StandingsRow; year: number }) {
   return (
-    <div className="fossil-card bg-basalt border border-olive/30 overflow-x-auto">
-      <table className="w-full text-sm min-w-[560px]">
-        <thead>
-          <tr className="text-left text-bone/50 font-mono text-xs uppercase">
-            <th className="px-4 py-3 font-normal">#</th>
-            <th className="px-4 py-3 font-normal">Team</th>
-            <th className="px-4 py-3 font-normal text-right">W</th>
-            <th className="px-4 py-3 font-normal text-right">L</th>
-            <th className="px-4 py-3 font-normal text-right">T</th>
-            <th className="px-4 py-3 font-normal text-right">PF</th>
-            <th className="px-4 py-3 font-normal text-right">PA</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((team) => {
-            const isChampion = team.final_rank === 1;
-            return (
-              <tr key={team.team_season_id} className="border-t border-olive/10">
-                <td className="px-4 py-2.5 font-mono text-bone/60">
-                  {team.final_rank ?? team.regular_season_rank ?? "—"}
-                </td>
-                <td className="px-4 py-2.5">
-                  <p className={`font-body ${isChampion ? "text-fuse" : "text-bone"}`}>
-                    {isChampion && "🏆 "}
-                    {team.team_name ?? team.manager_name}
-                  </p>
-                  <p className="font-mono text-xs text-bone/50">{team.manager_name}</p>
-                </td>
-                <td className="px-4 py-2.5 font-mono text-right text-bone">{team.wins}</td>
-                <td className="px-4 py-2.5 font-mono text-right text-bone">{team.losses}</td>
-                <td className="px-4 py-2.5 font-mono text-right text-bone/60">{team.ties}</td>
-                <td className="px-4 py-2.5 font-mono text-right text-bone">
-                  {team.points_for != null ? team.points_for.toFixed(1) : "—"}
-                </td>
-                <td className="px-4 py-2.5 font-mono text-right text-bone/60">
-                  {team.points_against != null ? team.points_against.toFixed(1) : "—"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="fossil-card bg-basalt border-2 border-fuse px-6 py-8 text-center mb-8">
+      <p className="font-mono text-xs text-fuse uppercase tracking-widest mb-2">
+        {year} League Champion
+      </p>
+      <p className="font-display text-4xl text-fuse tracking-wide">
+        🏆 {champion.team_name ?? champion.manager_name}
+      </p>
+      <p className="font-mono text-sm text-bone/60 mt-1">{champion.manager_name}</p>
+      <p className="font-mono text-xs text-bone/50 mt-2">
+        {champion.wins}-{champion.losses}
+        {champion.ties > 0 ? `-${champion.ties}` : ""} · {champion.points_for?.toFixed(1)} PF
+      </p>
     </div>
   );
 }
 
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ season?: string }>;
-}) {
+function DivisionBanners({ divisions, year }: { divisions: StandingsRow[]; year: number }) {
+  return (
+    <div className="mb-10">
+      <p className="font-mono text-xs text-olive uppercase tracking-widest mb-3 text-center">
+        {year} Division Champions
+      </p>
+      <div className={`grid gap-4 ${divisions.length > 1 ? "sm:grid-cols-2" : ""}`}>
+        {divisions.map((team) => (
+          <div
+            key={team.team_season_id}
+            className="fossil-card bg-basalt border border-amber/50 px-5 py-4 text-center"
+          >
+            <p className="font-mono text-xs text-amber uppercase tracking-widest mb-1">
+              {team.division}
+            </p>
+            <p className="font-display text-xl text-bone">{team.team_name ?? team.manager_name}</p>
+            <p className="font-mono text-xs text-bone/50">{team.manager_name}</p>
+            <p className="font-mono text-xs text-bone/40 mt-1">
+              {team.wins}-{team.losses}
+              {team.ties > 0 ? `-${team.ties}` : ""}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const QUICK_LINKS = [
+  { href: "/standings", label: "Standings" },
+  { href: "/games", label: "Games" },
+  { href: "/history", label: "History" },
+  { href: "/articles", label: "Articles" },
+  { href: "/valuations", label: "Valuations" },
+];
+
+export default async function LandingPage() {
   const years = await getSeasonYears();
 
   if (years.length === 0) {
     return (
-      <main className="max-w-3xl mx-auto px-4 py-10">
-        <h1 className="font-display text-4xl text-bone tracking-wide mb-4">Dyno Mites</h1>
+      <main className="max-w-3xl mx-auto px-4 py-10 text-center">
+        <h1 className="font-display text-5xl text-bone tracking-wide mb-4">Dyno Mites</h1>
         <p className="font-body text-bone/70">
           No seasons found. Check that the site is connected to Supabase and a sync has run.
         </p>
@@ -69,40 +76,41 @@ export default async function HomePage({
     );
   }
 
-  const params = await searchParams;
-  const requestedYear = params.season ? parseInt(params.season, 10) : undefined;
-  const activeYear = years.includes(requestedYear ?? -1) ? (requestedYear as number) : years[0];
-
-  const standings = await getStandingsForSeason(activeYear);
+  const latestYear = years[0];
+  const [champion, divisionChamps] = await Promise.all([
+    getChampion(latestYear),
+    getDivisionChampions(latestYear),
+  ]);
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-10">
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <h1 className="font-display text-4xl text-bone tracking-wide">Standings</h1>
-        {years.length > 1 && (
-          <div className="flex gap-2">
-            {years.map((year) => (
-              <Link
-                key={year}
-                href={`/?season=${year}`}
-                className={`font-mono text-sm px-3 py-1.5 border rounded ${
-                  year === activeYear
-                    ? "bg-amber text-basalt border-amber"
-                    : "border-olive/40 text-bone/70 hover:border-amber/60"
-                }`}
-              >
-                {year}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
+      <h1 className="font-display text-5xl text-bone tracking-wide text-center mb-10">
+        Dyno Mites
+      </h1>
 
-      {standings.length === 0 ? (
-        <p className="font-body text-bone/60">No standings data for {activeYear} yet.</p>
+      {champion ? (
+        <ChampionBanner champion={champion} year={latestYear} />
       ) : (
-        <StandingsTable rows={standings} />
+        <p className="font-body text-bone/50 text-center mb-8">
+          {latestYear} season is still underway — no champion crowned yet.
+        </p>
       )}
+
+      {divisionChamps.length > 0 && (
+        <DivisionBanners divisions={divisionChamps} year={latestYear} />
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        {QUICK_LINKS.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="fossil-card bg-basalt border border-olive/30 hover:border-amber/60 transition-colors px-5 py-4 text-center"
+          >
+            <span className="font-display text-lg text-bone tracking-wide">{link.label}</span>
+          </Link>
+        ))}
+      </div>
     </main>
   );
 }
