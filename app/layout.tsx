@@ -33,8 +33,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body className="font-body">{children}</body>
-      <Nav />
+      <body className="font-body">
+        <Nav />
+        {children}
+      </body>
     </html>
   );
 }
