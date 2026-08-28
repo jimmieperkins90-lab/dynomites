@@ -54,6 +54,29 @@ function DivisionBanners({ divisions, year }: { divisions: StandingsRow[]; year:
   );
 }
 
+async function SeasonSection({ year, isFirst }: { year: number; isFirst: boolean }) {
+  const [champion, divisionChamps] = await Promise.all([
+    getChampion(year),
+    getDivisionChampions(year),
+  ]);
+
+  return (
+    <section className={isFirst ? "" : "mt-12 pt-10 border-t border-olive/20"}>
+      {champion ? (
+        <ChampionBanner champion={champion} year={year} />
+      ) : (
+        <p className="font-body text-bone/50 text-center mb-8">
+          {year} season is still underway — no champion crowned yet.
+        </p>
+      )}
+
+      {divisionChamps.length > 0 && (
+        <DivisionBanners divisions={divisionChamps} year={year} />
+      )}
+    </section>
+  );
+}
+
 const QUICK_LINKS = [
   { href: "/standings", label: "Standings" },
   { href: "/games", label: "Games" },
@@ -76,31 +99,17 @@ export default async function LandingPage() {
     );
   }
 
-  const latestYear = years[0];
-  const [champion, divisionChamps] = await Promise.all([
-    getChampion(latestYear),
-    getDivisionChampions(latestYear),
-  ]);
-
   return (
     <main className="max-w-3xl mx-auto px-4 py-10">
       <h1 className="font-display text-5xl text-bone tracking-wide text-center mb-10">
         Dyno Mites
       </h1>
 
-      {champion ? (
-        <ChampionBanner champion={champion} year={latestYear} />
-      ) : (
-        <p className="font-body text-bone/50 text-center mb-8">
-          {latestYear} season is still underway — no champion crowned yet.
-        </p>
-      )}
+      {years.map((year, i) => (
+        <SeasonSection key={year} year={year} isFirst={i === 0} />
+      ))}
 
-      {divisionChamps.length > 0 && (
-        <DivisionBanners divisions={divisionChamps} year={latestYear} />
-      )}
-
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-2 gap-4 mt-12">
         {QUICK_LINKS.map((link) => (
           <Link
             key={link.href}
