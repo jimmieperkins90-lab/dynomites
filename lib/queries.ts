@@ -125,6 +125,7 @@ export type StandingsRow = {
   team_name: string | null;
   manager_name: string;
   avatar: string | null;
+  division: string | null;
   wins: number;
   losses: number;
   ties: number;
@@ -149,7 +150,7 @@ export async function getStandingsForSeason(year: number): Promise<StandingsRow[
   const { data, error } = await supabase
     .from("team_seasons")
     .select(
-      "id, team_name, wins, losses, ties, points_for, points_against, regular_season_rank, final_rank, made_playoffs, managers(display_name, real_name, avatar)"
+      "id, team_name, division, wins, losses, ties, points_for, points_against, regular_season_rank, final_rank, made_playoffs, managers(display_name, real_name, avatar)"
     )
     .eq("season_id", season.id);
   if (error || !data) return [];
@@ -159,6 +160,7 @@ export async function getStandingsForSeason(year: number): Promise<StandingsRow[
     team_name: row.team_name,
     manager_name: row.managers?.real_name ?? row.managers?.display_name ?? "Unknown",
     avatar: row.managers?.avatar ?? null,
+    division: row.division,
     wins: row.wins,
     losses: row.losses,
     ties: row.ties,
@@ -176,6 +178,93 @@ export async function getStandingsForSeason(year: number): Promise<StandingsRow[
   });
 
   return rows;
+}
+
+export async function getChampion(year: number): Promise<StandingsRow | null> {
+  const standings = await getStandingsForSeason(year);
+  return standings.find((r) => r.final_rank === 1) ?? null;
+}
+
+// Best regular-season record within each division. Division must be set
+// manually on team_seasons (see migration note) since the sync script
+// doesn't currently pull it from Sleeper.
+export async function getDivisionChampions(year: number): Promise<StandingsRow[]> {
+  const standings = await getStandingsForSeason(year);
+  const byDivision = new Map<string, StandingsRow>();
+
+  for (const row of standings) {
+    if (!row.division) continue;
+    const current = byDivision.get(row.division);
+    const rank = row.regular_season_rank ?? 999;
+    const currentRank = current?.regular_season_rank ?? 999;
+    if (!current || rank < currentRank) {
+      byDivision.set(row.division, row);
+    }
+  }
+
+  return Array.from(byDivision.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, row]) => row);
+}
+
+export type Article = {
+  id: string;
+  title: string;
+  slug: string;
+  author: string | null;
+  published_at: string;
+  cover_image_url: string | null;
+  body: string;
+};
+
+export async function getArticles(): Promise<Article[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("articles")
+    .select("id, title, slug, author, published_at, cover_image_url, body")
+    .order("published_at", { ascending: false });
+  if (error || !data) return [];
+  return data as Article[];
+}
+
+export async function getArticleBySlug(slug: string): Promise<Article | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("articles")
+    .select("id, title, slug, author, published_at, cover_image_url, body")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as Article;
+}
+
+export type FranchiseValuation = {
+  manager_id: string;
+  manager_name: string;
+  avatar: string | null;
+  value: number;
+  note: string | null;
+  updated_at: string;
+};
+
+export async function getFranchiseValuations(): Promise<FranchiseValuation[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("franchise_valuations")
+    .select("manager_id, value, note, updated_at, managers(display_name, real_name, avatar)")
+    .order("value", { ascending: false });
+  if (error || !data) return [];
+  return data.map((row: any) => ({
+    manager_id: row.manager_id,
+    manager_name: row.managers?.real_name ?? row.managers?.display_name ?? "Unknown",
+    avatar: row.managers?.avatar ?? null,
+    value: row.value,
+    note: row.note,
+    updated_at: row.updated_at,
+  }));
 }
 
 export function sortStarters(a: LineupRow, b: LineupRow) {
