@@ -118,7 +118,7 @@ export async function runSleeperSync(
     return `Round ${r}`;
   };
 
-    const bracketMatchupInfo = new Map<number, { phase: "winners_bracket" | "losers_bracket"; week: number; round_game: string }>();
+  const bracketMatchupInfo = new Map<number, { phase: "winners_bracket" | "losers_bracket"; week: number; round_game: string }>();
 
   async function indexBracket(bracket: BracketMatch[], phase: "winners_bracket" | "losers_bracket") {
     if (!bracket.length || playoffWeekStart == null) return;
