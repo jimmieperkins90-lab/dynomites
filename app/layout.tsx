@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Titan_One, Nunito, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 
-const display = Bebas_Neue({
+const display = Titan_One({
   weight: "400",
   subsets: ["latin"],
   variable: "--font-display",
 });
 
-const body = IBM_Plex_Sans({
-  weight: ["400", "500", "600"],
+const body = Nunito({
+  weight: ["400", "600", "700", "800"],
   subsets: ["latin"],
   variable: "--font-body",
 });
