@@ -8,20 +8,40 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function ChampionBanner({ champion, year }: { champion: StandingsRow; year: number }) {
+function ChampionsRafter({
+  champions,
+}: {
+  champions: { year: number; champion: StandingsRow }[];
+}) {
+  if (champions.length === 0) return null;
+
   return (
-    <div className="fossil-card bg-basalt border-2 border-fuse px-6 py-8 text-center mb-8">
-      <p className="font-mono text-xs text-fuse uppercase tracking-widest mb-2">
-        {year} League Champion
-      </p>
-      <p className="font-display text-4xl text-fuse tracking-wide">
-        🏆 {champion.team_name ?? champion.manager_name}
-      </p>
-      <p className="font-mono text-sm text-bone/60 mt-1">{champion.manager_name}</p>
-      <p className="font-mono text-xs text-bone/50 mt-2">
-        {champion.wins}-{champion.losses}
-        {champion.ties > 0 ? `-${champion.ties}` : ""} · {champion.points_for?.toFixed(1)} PF
-      </p>
+    <div className="relative mb-14 pt-4">
+      <div
+        className="absolute left-[5%] right-[5%] top-0 h-3.5 rounded-sm border-2 border-[var(--color-ink)]"
+        style={{
+          background:
+            "repeating-linear-gradient(90deg, #6b4a2b, #6b4a2b 18px, #5c3f24 18px, #5c3f24 22px)",
+        }}
+      />
+      <div className="flex flex-wrap justify-center gap-8 pt-7">
+        {champions.map(({ year, champion }) => (
+          <div key={year} className="relative w-56 pt-7">
+            <span className="absolute left-6 top-0 h-7 w-0.5 bg-[var(--color-ink)]" />
+            <span className="absolute right-6 top-0 h-7 w-0.5 bg-[var(--color-ink)]" />
+            <div className="ribbon px-4 py-3 text-center">
+              <p className="font-display text-2xl leading-none">{year}</p>
+              <p className="font-body font-extrabold text-xs uppercase tracking-wide text-[var(--color-rust)] mt-1">
+                {champion.team_name ?? champion.manager_name}
+              </p>
+              <p className="font-body text-xs opacity-60 mt-1">
+                {champion.manager_name} · {champion.wins}-{champion.losses}
+                {champion.ties > 0 ? `-${champion.ties}` : ""}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -29,21 +49,18 @@ function ChampionBanner({ champion, year }: { champion: StandingsRow; year: numb
 function DivisionBanners({ divisions, year }: { divisions: StandingsRow[]; year: number }) {
   return (
     <div className="mb-10">
-      <p className="font-mono text-xs text-olive uppercase tracking-widest mb-3 text-center">
+      <p className="font-body font-extrabold text-xs uppercase tracking-widest text-center text-[var(--color-green-deep)] mb-3">
         {year} Division Champions
       </p>
       <div className={`grid gap-4 ${divisions.length > 1 ? "sm:grid-cols-2" : ""}`}>
         {divisions.map((team) => (
-          <div
-            key={team.team_season_id}
-            className="fossil-card bg-basalt border border-amber/50 px-5 py-4 text-center"
-          >
-            <p className="font-mono text-xs text-amber uppercase tracking-widest mb-1">
+          <div key={team.team_season_id} className="panel px-5 py-4 text-center">
+            <p className="font-body font-extrabold text-xs uppercase tracking-widest text-[var(--color-rust)] mb-1">
               {team.division}
             </p>
-            <p className="font-display text-xl text-bone">{team.team_name ?? team.manager_name}</p>
-            <p className="font-mono text-xs text-bone/50">{team.manager_name}</p>
-            <p className="font-mono text-xs text-bone/40 mt-1">
+            <p className="font-display text-xl">{team.team_name ?? team.manager_name}</p>
+            <p className="font-body text-xs opacity-60">{team.manager_name}</p>
+            <p className="font-body text-xs opacity-50 mt-1">
               {team.wins}-{team.losses}
               {team.ties > 0 ? `-${team.ties}` : ""}
             </p>
@@ -54,25 +71,18 @@ function DivisionBanners({ divisions, year }: { divisions: StandingsRow[]; year:
   );
 }
 
-async function SeasonSection({ year, isFirst }: { year: number; isFirst: boolean }) {
-  const [champion, divisionChamps] = await Promise.all([
-    getChampion(year),
-    getDivisionChampions(year),
-  ]);
+type SeasonData = {
+  year: number;
+  champion: StandingsRow | null;
+  divisionChamps: StandingsRow[];
+};
+
+function SeasonSection({ season, isFirst }: { season: SeasonData; isFirst: boolean }) {
+  if (season.divisionChamps.length === 0) return null;
 
   return (
-    <section className={isFirst ? "" : "mt-12 pt-10 border-t border-olive/20"}>
-      {champion ? (
-        <ChampionBanner champion={champion} year={year} />
-      ) : (
-        <p className="font-body text-bone/50 text-center mb-8">
-          {year} season is still underway — no champion crowned yet.
-        </p>
-      )}
-
-      {divisionChamps.length > 0 && (
-        <DivisionBanners divisions={divisionChamps} year={year} />
-      )}
+    <section className={isFirst ? "" : "mt-12 pt-10 border-t-2 border-[var(--color-ink)]/15"}>
+      <DivisionBanners divisions={season.divisionChamps} year={season.year} />
     </section>
   );
 }
@@ -91,22 +101,39 @@ export default async function LandingPage() {
   if (years.length === 0) {
     return (
       <main className="max-w-3xl mx-auto px-4 py-10 text-center">
-        <h1 className="font-display text-5xl text-bone tracking-wide mb-4">Dyno Mites</h1>
-        <p className="font-body text-bone/70">
+        <h1 className="outline font-display text-5xl tracking-wide mb-4">Dyno Mites</h1>
+        <p className="font-body opacity-70">
           No seasons found. Check that the site is connected to Supabase and a sync has run.
         </p>
       </main>
     );
   }
 
+  const seasons: SeasonData[] = await Promise.all(
+    years.map(async (year) => {
+      const [champion, divisionChamps] = await Promise.all([
+        getChampion(year),
+        getDivisionChampions(year),
+      ]);
+      return { year, champion, divisionChamps };
+    })
+  );
+
+  const champions = seasons
+    .filter((s): s is SeasonData & { champion: StandingsRow } => s.champion !== null)
+    .map((s) => ({ year: s.year, champion: s.champion }));
+
   return (
     <main className="max-w-3xl mx-auto px-4 py-10">
-      <h1 className="font-display text-5xl text-bone tracking-wide text-center mb-10">
-        Dyno Mites
-      </h1>
+      <h1 className="outline font-display text-5xl tracking-wide text-center mb-2">Dyno Mites</h1>
+      <p className="font-body font-semibold text-center opacity-70 mb-2">
+        League standings, matchup history, and every champion since kickoff.
+      </p>
 
-      {years.map((year, i) => (
-        <SeasonSection key={year} year={year} isFirst={i === 0} />
+      <ChampionsRafter champions={champions} />
+
+      {seasons.map((season, i) => (
+        <SeasonSection key={season.year} season={season} isFirst={i === 0} />
       ))}
 
       <div className="grid sm:grid-cols-2 gap-4 mt-12">
@@ -114,9 +141,9 @@ export default async function LandingPage() {
           <Link
             key={link.href}
             href={link.href}
-            className="fossil-card bg-basalt border border-olive/30 hover:border-amber/60 transition-colors px-5 py-4 text-center"
+            className="panel hover:border-[var(--color-rust)] transition-colors px-5 py-4 text-center"
           >
-            <span className="font-display text-lg text-bone tracking-wide">{link.label}</span>
+            <span className="font-display text-lg tracking-wide">{link.label}</span>
           </Link>
         ))}
       </div>
