@@ -121,7 +121,7 @@ export default async function PlayersPage({
                   </td>
                   <td className="px-4 py-2.5 font-body text-[rgba(32,32,15,0.8)]">{p.manager_name}</td>
                   <td className="px-4 py-2.5">
-                    <Link href={`/games/${p.matchup_id}`} className="font-mono text-xs text-[rgba(32,32,15,0.5)] hover:text-[var(--color-rust)]">
+                    <Link href={`/games/${p.game_id}`} className="font-mono text-xs text-[rgba(32,32,15,0.5)] hover:text-[var(--color-rust)]">
                       {p.season_year} Wk {p.week} vs {p.opponent_manager_name ?? "—"}
                     </Link>
                   </td>
