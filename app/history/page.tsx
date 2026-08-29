@@ -5,6 +5,7 @@ import {
   getAllPlayedGames,
   buildHeadToHead,
   getDivisionTitleCountsByManager,
+  getCanonicalMatchupIdMap,
   type GameResult,
 } from "@/lib/queries";
 
@@ -23,7 +24,7 @@ function RecordCard({
   opponentManager,
   season,
   week,
-  matchupId,
+  gameId,
 }: {
   title: string;
   points: number | null;
@@ -33,7 +34,7 @@ function RecordCard({
   opponentManager?: string | null;
   season: number;
   week: number;
-  matchupId: string | null;
+  gameId: string | null;
 }) {
   const content = (
     <div className="panel p-5 hover:border-[var(--color-gold)] transition-colors h-full">
@@ -48,7 +49,7 @@ function RecordCard({
       )}
     </div>
   );
-  return matchupId ? <Link href={`/games/${matchupId}`}>{content}</Link> : content;
+  return gameId ? <Link href={`/games/${gameId}`}>{content}</Link> : content;
 }
 
 // Used for blowout/nailbiter -- leads with the margin of victory (what
@@ -64,7 +65,7 @@ function MarginRecordCard({
   loserPoints,
   season,
   week,
-  matchupId,
+  gameId,
 }: {
   title: string;
   winnerManager: string;
@@ -75,11 +76,11 @@ function MarginRecordCard({
   loserPoints: number;
   season: number;
   week: number;
-  matchupId: string;
+  gameId: string;
 }) {
   const margin = Math.abs(winnerPoints - loserPoints);
   return (
-    <Link href={`/games/${matchupId}`}>
+    <Link href={`/games/${gameId}`}>
       <div className="panel p-5 hover:border-[var(--color-gold)] transition-colors h-full">
         <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2">{title}</p>
         <p className="font-display text-3xl text-[var(--color-gold)]">Won by {margin.toFixed(1)}</p>
@@ -101,14 +102,15 @@ function MarginRecordCard({
 }
 
 export default async function HistoryPage() {
-  const [careerStats, teamScores, playedGames, divisionTitles] = await Promise.all([
+  const [careerStats, teamScores, playedGames, divisionTitles, canonicalIds] = await Promise.all([
     getCareerStats(),
     getAllTeamGameScores(),
     getAllPlayedGames(),
     getDivisionTitleCountsByManager(),
+    getCanonicalMatchupIdMap(),
   ]);
 
-  const { summary: h2h, games: h2hGames } = buildHeadToHead(teamScores);
+  const { summary: h2h, games: h2hGames } = buildHeadToHead(teamScores, canonicalIds);
   const managers = Array.from(new Set(teamScores.map((r) => r.manager_name))).sort();
 
   const scored = teamScores.filter((r) => r.points != null);
@@ -222,7 +224,7 @@ export default async function HistoryPage() {
               opponentManager={highest.opponent_manager_name}
               season={highest.season_year}
               week={highest.week}
-              matchupId={highest.matchup_id}
+              gameId={canonicalIds.get(highest.matchup_id) ?? highest.matchup_id}
             />
           )}
           {lowest && (
@@ -235,7 +237,7 @@ export default async function HistoryPage() {
               opponentManager={lowest.opponent_manager_name}
               season={lowest.season_year}
               week={lowest.week}
-              matchupId={lowest.matchup_id}
+              gameId={canonicalIds.get(lowest.matchup_id) ?? lowest.matchup_id}
             />
           )}
           {blowout && (
@@ -244,7 +246,7 @@ export default async function HistoryPage() {
               {...toWinnerLoser(blowout)}
               season={blowout.season_year}
               week={blowout.week}
-              matchupId={blowout.home_matchup_id}
+              gameId={blowout.home_matchup_id}
             />
           )}
           {nailbiter && (
@@ -253,7 +255,7 @@ export default async function HistoryPage() {
               {...toWinnerLoser(nailbiter)}
               season={nailbiter.season_year}
               week={nailbiter.week}
-              matchupId={nailbiter.home_matchup_id}
+              gameId={nailbiter.home_matchup_id}
             />
           )}
         </div>
@@ -285,7 +287,7 @@ export default async function HistoryPage() {
                         <table className="w-full text-sm mt-2 mb-1">
                           <tbody>
                             {games.map((g) => (
-                              <tr key={g.matchup_id} className="border-t border-[rgba(32,32,15,0.08)]">
+                              <tr key={g.game_id + g.week} className="border-t border-[rgba(32,32,15,0.08)]">
                                 <td className="py-1.5 font-mono text-xs text-[rgba(32,32,15,0.5)]">
                                   {g.season_year} Wk {g.week}
                                 </td>
@@ -297,8 +299,6 @@ export default async function HistoryPage() {
                                     className={
                                       g.result === "W"
                                         ? "text-[var(--color-gold)] font-bold"
-                                        : g.result === "L"
-                                        ? "text-[rgba(32,32,15,0.5)]"
                                         : "text-[rgba(32,32,15,0.5)]"
                                     }
                                   >
@@ -307,7 +307,7 @@ export default async function HistoryPage() {
                                 </td>
                                 <td className="py-1.5 pl-3 text-right">
                                   <Link
-                                    href={`/games/${g.matchup_id}`}
+                                    href={`/games/${g.game_id}`}
                                     className="font-mono text-xs text-[rgba(32,32,15,0.5)] hover:text-[var(--color-rust)] underline"
                                   >
                                     Lineups
