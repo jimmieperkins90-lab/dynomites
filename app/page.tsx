@@ -8,6 +8,39 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function HangingBanner({
+  variant,
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  variant: "champion" | "division";
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="relative w-40">
+      <div className="relative h-10">
+        <span className="absolute left-3.5 top-0 h-8 w-0.5 bg-[var(--color-ink)]" />
+        <span className="absolute right-3.5 top-0 h-8 w-0.5 bg-[var(--color-ink)]" />
+        <div className="banner-pole absolute bottom-0 left-0.5 right-0.5 h-2" />
+      </div>
+      <div
+        className={`banner-flag ${
+          variant === "division" ? "banner-flag-rust" : ""
+        } px-3 py-5 text-center`}
+      >
+        <p className="font-display text-xl leading-none text-[var(--color-gold)]">{eyebrow}</p>
+        <p className="font-body font-extrabold text-xs text-[var(--color-cream)] mt-2">{title}</p>
+        <p className="font-body text-[0.65rem] font-semibold text-[var(--color-cream)]/60 mt-1">
+          {subtitle}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ChampionsRafter({
   champions,
 }: {
@@ -20,21 +53,15 @@ function ChampionsRafter({
       <div className="rafter-beam absolute left-[5%] right-[5%] top-0 h-4 rounded-sm border-2 border-[var(--color-ink)]" />
       <div className="flex flex-wrap justify-center gap-10 pt-9">
         {champions.map(({ year, champion }) => (
-          <div key={year} className="relative w-40 pt-9">
-            <span className="absolute left-3.5 top-5 h-4 w-0.5 bg-[var(--color-ink)]" />
-            <span className="absolute right-3.5 top-5 h-4 w-0.5 bg-[var(--color-ink)]" />
-            <div className="banner-pole absolute top-8 left-0.5 right-0.5 h-2 z-10" />
-            <div className="banner-flag mt-9 px-3 py-5 text-center">
-              <p className="font-display text-2xl leading-none text-[var(--color-gold)]">{year}</p>
-              <p className="font-body font-extrabold text-xs text-[var(--color-cream)] mt-2">
-                {champion.team_name ?? champion.manager_name}
-              </p>
-              <p className="font-body text-[0.65rem] font-semibold text-[var(--color-cream)]/60 mt-1">
-                {champion.manager_name} · {champion.wins}-{champion.losses}
-                {champion.ties > 0 ? `-${champion.ties}` : ""}
-              </p>
-            </div>
-          </div>
+          <HangingBanner
+            key={year}
+            variant="champion"
+            eyebrow={String(year)}
+            title={champion.team_name ?? champion.manager_name}
+            subtitle={`${champion.manager_name} · ${champion.wins}-${champion.losses}${
+              champion.ties > 0 ? `-${champion.ties}` : ""
+            }`}
+          />
         ))}
       </div>
     </div>
@@ -43,23 +70,22 @@ function ChampionsRafter({
 
 function DivisionBanners({ divisions, year }: { divisions: StandingsRow[]; year: number }) {
   return (
-    <div className="mb-10">
-      <p className="font-body font-extrabold text-xs uppercase tracking-widest text-center text-[var(--color-green-deep)] mb-3">
+    <div className="relative mb-10 pt-4">
+      <p className="font-body font-extrabold text-xs uppercase tracking-widest text-center text-[var(--color-green-deep)] mb-4">
         {year} Division Champions
       </p>
-      <div className={`grid gap-4 ${divisions.length > 1 ? "sm:grid-cols-2" : ""}`}>
+      <div className="rafter-beam absolute left-[15%] right-[15%] top-8 h-3 rounded-sm border-2 border-[var(--color-ink)]" />
+      <div className="flex flex-wrap justify-center gap-8 pt-7">
         {divisions.map((team) => (
-          <div key={team.team_season_id} className="panel px-5 py-4 text-center">
-            <p className="font-body font-extrabold text-xs uppercase tracking-widest text-[var(--color-rust)] mb-1">
-              {team.division}
-            </p>
-            <p className="font-display text-xl">{team.team_name ?? team.manager_name}</p>
-            <p className="font-body text-xs opacity-60">{team.manager_name}</p>
-            <p className="font-body text-xs opacity-50 mt-1">
-              {team.wins}-{team.losses}
-              {team.ties > 0 ? `-${team.ties}` : ""}
-            </p>
-          </div>
+          <HangingBanner
+            key={team.team_season_id}
+            variant="division"
+            eyebrow={team.division ?? ""}
+            title={team.team_name ?? team.manager_name}
+            subtitle={`${team.manager_name} · ${team.wins}-${team.losses}${
+              team.ties > 0 ? `-${team.ties}` : ""
+            }`}
+          />
         ))}
       </div>
     </div>
