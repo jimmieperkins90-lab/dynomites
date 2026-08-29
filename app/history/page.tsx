@@ -35,13 +35,13 @@ function RecordCard({
   matchupId: string | null;
 }) {
   const content = (
-    <div className="fossil-card bg-basalt border border-olive/30 p-5 hover:border-amber/60 transition-colors h-full">
-      <p className="font-mono text-xs text-olive uppercase tracking-widest mb-2">{title}</p>
-      <p className="font-display text-3xl text-amber">{fmt(points)}</p>
-      <p className="font-body text-bone mt-1">{team ?? manager}</p>
-      <p className="font-mono text-xs text-bone/50">{manager}</p>
+    <div className="panel p-5 hover:border-[var(--color-gold)] transition-colors h-full">
+      <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2">{title}</p>
+      <p className="font-display text-3xl text-[var(--color-gold)]">{fmt(points)}</p>
+      <p className="font-body mt-1">{team ?? manager}</p>
+      <p className="font-mono text-xs text-[rgba(32,32,15,0.5)]">{manager}</p>
       {opponentManager && (
-        <p className="font-mono text-xs text-bone/40 mt-2">
+        <p className="font-mono text-xs text-[rgba(32,32,15,0.4)] mt-2">
           vs {opponentManager} ({fmt(opponentPoints)}) · {season} Wk {week}
         </p>
       )}
@@ -82,14 +82,14 @@ export default async function HistoryPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="font-display text-4xl text-bone tracking-wide mb-8">History &amp; Records</h1>
+      <h1 className="outline font-display text-4xl tracking-wide mb-8">History &amp; Records</h1>
 
       <section className="mb-12">
-        <h2 className="font-display text-xl text-olive mb-4 tracking-wide">Career Standings</h2>
-        <div className="fossil-card bg-basalt border border-olive/30 overflow-x-auto">
+        <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Career Standings</h2>
+        <div className="panel overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
             <thead>
-              <tr className="text-left text-bone/50 font-mono text-xs uppercase">
+              <tr className="text-left text-[rgba(32,32,15,0.5)] font-mono text-xs uppercase">
                 <th className="px-4 py-3 font-normal">Manager</th>
                 <th className="px-4 py-3 font-normal text-right">W</th>
                 <th className="px-4 py-3 font-normal text-right">L</th>
@@ -105,27 +105,27 @@ export default async function HistoryPage() {
                 const games = m.total_wins + m.total_losses + m.total_ties;
                 const winPct = games > 0 ? (m.total_wins + m.total_ties * 0.5) / games : 0;
                 return (
-                  <tr key={m.manager_id} className="border-t border-olive/10">
-                    <td className="px-4 py-2.5 font-body text-bone">{m.manager_name}</td>
-                    <td className="px-4 py-2.5 font-mono text-right text-bone">{m.total_wins}</td>
-                    <td className="px-4 py-2.5 font-mono text-right text-bone">{m.total_losses}</td>
-                    <td className="px-4 py-2.5 font-mono text-right text-bone/70">
+                  <tr key={m.manager_id} className="border-t border-[rgba(32,32,15,0.12)]">
+                    <td className="px-4 py-2.5 font-body">{m.manager_name}</td>
+                    <td className="px-4 py-2.5 font-mono text-right">{m.total_wins}</td>
+                    <td className="px-4 py-2.5 font-mono text-right">{m.total_losses}</td>
+                    <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                       {(winPct * 100).toFixed(0)}%
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-right text-bone">
+                    <td className="px-4 py-2.5 font-mono text-right">
                       {fmt(m.total_points_for)}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-right text-bone/70">
+                    <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                       {fmt(m.total_points_against)}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-right text-bone/70">
+                    <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                       {m.playoff_appearances}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-right">
                       {m.championships > 0 ? (
-                        <span className="text-fuse">{m.championships}</span>
+                        <span className="text-[var(--color-gold)] font-bold">{m.championships}</span>
                       ) : (
-                        <span className="text-bone/30">0</span>
+                        <span className="text-[rgba(32,32,15,0.3)]">0</span>
                       )}
                     </td>
                   </tr>
@@ -137,7 +137,7 @@ export default async function HistoryPage() {
       </section>
 
       <section className="mb-12">
-        <h2 className="font-display text-xl text-olive mb-4 tracking-wide">Notable Games</h2>
+        <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Notable Games</h2>
         <div className="grid sm:grid-cols-2 gap-4">
           {highest && (
             <RecordCard
@@ -195,23 +195,23 @@ export default async function HistoryPage() {
       </section>
 
       <section>
-        <h2 className="font-display text-xl text-olive mb-4 tracking-wide">Head-to-Head</h2>
+        <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Head-to-Head</h2>
         <div className="space-y-2">
           {managers.map((manager) => {
             const opponents = h2h[manager] ?? {};
             const opponentNames = Object.keys(opponents).sort();
             if (opponentNames.length === 0) return null;
             return (
-              <details key={manager} className="fossil-card bg-basalt border border-olive/30 px-5 py-3">
-                <summary className="font-body text-bone cursor-pointer">{manager}</summary>
+              <details key={manager} className="panel px-5 py-3">
+                <summary className="font-body cursor-pointer">{manager}</summary>
                 <table className="w-full text-sm mt-3">
                   <tbody>
                     {opponentNames.map((opp) => {
                       const rec = opponents[opp];
                       return (
-                        <tr key={opp} className="border-t border-olive/10">
-                          <td className="py-1.5 font-body text-bone/80">{opp}</td>
-                          <td className="py-1.5 font-mono text-right text-bone/70">
+                        <tr key={opp} className="border-t border-[rgba(32,32,15,0.12)]">
+                          <td className="py-1.5 font-body text-[rgba(32,32,15,0.8)]">{opp}</td>
+                          <td className="py-1.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                             {rec.wins}-{rec.losses}
                             {rec.ties > 0 ? `-${rec.ties}` : ""}
                           </td>
