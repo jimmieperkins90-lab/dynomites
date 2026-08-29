@@ -21,30 +21,49 @@ function divisionColorClass(division: string | null): string {
   }
 }
 
+function formatRecord(team: { wins: number; losses: number; ties: number }): string {
+  return `${team.wins}-${team.losses}${team.ties > 0 ? `-${team.ties}` : ""}`;
+}
+
 function HangingBanner({
   colorClass,
-  eyebrow,
-  title,
-  subtitle,
+  titleLine,
+  teamName,
+  owner,
+  record,
+  year,
 }: {
   colorClass: string;
-  eyebrow: string;
-  title: string;
-  subtitle: string;
+  titleLine: string;
+  teamName: string;
+  owner: string;
+  record: string;
+  year: number;
 }) {
   return (
     <div className="relative w-64">
-      <div className="relative h-16">
-        <span className="absolute left-6 top-0 h-12 w-0.5 bg-[var(--color-ink)]" />
-        <span className="absolute right-6 top-0 h-12 w-0.5 bg-[var(--color-ink)]" />
-        <div className="banner-pole absolute bottom-0 left-0.5 right-0.5 h-4" />
+      <div className="relative h-8">
+        <span className="absolute left-6 top-0 h-8 w-px bg-[var(--color-ink)]/70" />
+        <span className="absolute right-6 top-0 h-8 w-px bg-[var(--color-ink)]/70" />
       </div>
-      <div className={`banner-flag ${colorClass} h-72 px-4 pt-8 pb-16 text-center`}>
-        <p className="font-display text-4xl leading-none text-[var(--color-gold)]">{eyebrow}</p>
-        <p className="font-display text-xl leading-tight text-[var(--color-cream)] mt-3 truncate px-1">
-          {title}
-        </p>
-        <p className="font-body text-sm font-bold text-[var(--color-cream)]/80 mt-2">{subtitle}</p>
+      <div className={`banner-flag ${colorClass} min-h-80`}>
+        <div className="banner-rod" />
+        <div className="banner-body px-4 py-5 text-center">
+          <p className="font-display text-sm sm:text-base leading-snug tracking-wide uppercase text-[var(--color-gold)]">
+            {titleLine}
+          </p>
+          <div className="h-px bg-[var(--color-cream)]/30 my-3 mx-8" />
+          <p className="font-display text-xl leading-snug text-[var(--color-cream)] break-words">
+            {teamName}
+          </p>
+          <p className="font-body text-sm font-bold text-[var(--color-cream)]/90 mt-2 break-words">
+            {owner}
+          </p>
+          <p className="font-body text-sm font-semibold text-[var(--color-cream)]/75 mt-1">
+            {record}
+          </p>
+          <p className="font-display text-lg text-[var(--color-gold)] mt-2">{year}</p>
+        </div>
       </div>
     </div>
   );
@@ -65,11 +84,11 @@ function ChampionsRafter({
           <HangingBanner
             key={year}
             colorClass="banner-flag-champion"
-            eyebrow={String(year)}
-            title={champion.team_name ?? champion.manager_name}
-            subtitle={`${champion.manager_name} · ${champion.wins}-${champion.losses}${
-              champion.ties > 0 ? `-${champion.ties}` : ""
-            }`}
+            titleLine="League Champions"
+            teamName={champion.team_name ?? champion.manager_name}
+            owner={champion.manager_name}
+            record={formatRecord(champion)}
+            year={year}
           />
         ))}
       </div>
@@ -90,11 +109,11 @@ function DivisionChampionsRafter({ entries }: { entries: DivisionChampionEntry[]
           <HangingBanner
             key={team.team_season_id}
             colorClass={divisionColorClass(team.division)}
-            eyebrow={team.division ?? ""}
-            title={team.team_name ?? team.manager_name}
-            subtitle={`${team.manager_name} · ${year} · ${team.wins}-${team.losses}${
-              team.ties > 0 ? `-${team.ties}` : ""
-            }`}
+            titleLine={`${team.division ?? ""} Division Champions`}
+            teamName={team.team_name ?? team.manager_name}
+            owner={team.manager_name}
+            record={formatRecord(team)}
+            year={year}
           />
         ))}
       </div>
