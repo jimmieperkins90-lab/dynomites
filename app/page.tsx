@@ -46,7 +46,7 @@ function HangingBanner({
         <span className="absolute left-7 top-0 h-8 w-px bg-[var(--color-ink)]" />
         <span className="absolute right-7 top-0 h-8 w-px bg-[var(--color-ink)]" />
       </div>
-      <div className={`banner-flag ${colorClass} min-h-[30rem]`}>
+      <div className={`banner-flag ${colorClass} min-h-[27rem]`}>
         <div className="banner-rod" />
         <div className="banner-body px-5 py-6 text-center">
           <p className="font-display text-2xl leading-snug tracking-wide uppercase text-[var(--color-gold)]">
@@ -62,7 +62,7 @@ function HangingBanner({
           <p className="font-body text-xl font-semibold text-[var(--color-cream)] mt-2">
             {record}
           </p>
-          <p className="font-display text-7xl leading-none text-[var(--color-gold)] mt-4">{year}</p>
+          <p className="font-display text-4xl leading-none text-[var(--color-gold)] mt-4">{year}</p>
         </div>
       </div>
     </div>
