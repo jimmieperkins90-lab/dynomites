@@ -9,6 +9,8 @@
   --color-ink: #20200f;
   --color-rust: #b5522c;
   --color-gold: #e0a53a;
+  --color-herbies: #3d7a3f;
+  --color-omnies: #2c6e7a;
 }
 
 body {
@@ -69,14 +71,28 @@ body {
 }
 
 .banner-flag {
-  background-color: var(--color-green-deep);
   border: 4px solid var(--color-ink);
   clip-path: polygon(0 0, 100% 0, 100% 82%, 50% 100%, 0 82%);
-  box-shadow: 4px 5px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 5px 6px 0 rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-/* Division-champion banners reuse the same hanging shape, in rust
-   instead of green, at a slightly smaller scale on the page. */
+/* Championship banner: black-and-gold so it reads as the clear standout
+   against the green page background, distinct from every division color. */
+.banner-flag-champion {
+  background-color: var(--color-ink);
+  border-color: var(--color-gold);
+}
+
+/* Division banners -- one solid color per division. */
 .banner-flag-rust {
   background-color: var(--color-rust);
+}
+.banner-flag-herbies {
+  background-color: var(--color-herbies);
+}
+.banner-flag-omnies {
+  background-color: var(--color-omnies);
 }
