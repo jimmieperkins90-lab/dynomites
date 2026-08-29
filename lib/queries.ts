@@ -185,6 +185,15 @@ export async function getChampion(year: number): Promise<StandingsRow | null> {
   return standings.find((r) => r.final_rank === 1) ?? null;
 }
 
+// Ranks two teams by regular-season performance: wins first, points_for as
+// the tiebreaker. `regular_season_rank` is NOT used here -- it is never
+// populated by the sync (always null in the DB) so relying on it caused
+// division champions to be picked essentially at random.
+function isBetterRegularSeason(a: StandingsRow, b: StandingsRow): boolean {
+  if (a.wins !== b.wins) return a.wins > b.wins;
+  return (a.points_for ?? 0) > (b.points_for ?? 0);
+}
+
 export async function getDivisionChampions(year: number): Promise<StandingsRow[]> {
   const standings = await getStandingsForSeason(year);
   const byDivision = new Map<string, StandingsRow>();
@@ -192,9 +201,7 @@ export async function getDivisionChampions(year: number): Promise<StandingsRow[]
   for (const row of standings) {
     if (!row.division) continue;
     const current = byDivision.get(row.division);
-    const rank = row.regular_season_rank ?? 999;
-    const currentRank = current?.regular_season_rank ?? 999;
-    if (!current || rank < currentRank) {
+    if (!current || isBetterRegularSeason(row, current)) {
       byDivision.set(row.division, row);
     }
   }
