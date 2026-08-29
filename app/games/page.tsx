@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSeasonYears, getGamesForSeason, type GameResult } from "@/lib/queries";
+import { GameFilters } from "@/components/GameFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,7 @@ function ScoreLine({ game }: { game: GameResult }) {
 export default async function GamesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ season?: string }>;
+  searchParams: Promise<{ season?: string; week?: string; manager?: string }>;
 }) {
   const years = await getSeasonYears();
   if (years.length === 0) {
@@ -96,10 +97,28 @@ export default async function GamesPage({
   const params = await searchParams;
   const requestedYear = params.season ? parseInt(params.season, 10) : undefined;
   const activeYear = years.includes(requestedYear ?? -1) ? (requestedYear as number) : years[0];
+  const activeWeek = params.week ? parseInt(params.week, 10) : null;
+  const activeManager = params.manager ?? null;
 
   const games = await getGamesForSeason(activeYear);
+
+  const allWeeks = Array.from(new Set(games.map((g) => g.week))).sort((a, b) => a - b);
+  const allManagers = Array.from(
+    new Set(
+      games.flatMap((g) => [g.home_manager_name, g.away_manager_name].filter((m): m is string => !!m))
+    )
+  ).sort();
+
+  const filteredGames = games.filter((g) => {
+    if (activeWeek != null && g.week !== activeWeek) return false;
+    if (activeManager && g.home_manager_name !== activeManager && g.away_manager_name !== activeManager) {
+      return false;
+    }
+    return true;
+  });
+
   const byWeek = new Map<number, GameResult[]>();
-  for (const game of games) {
+  for (const game of filteredGames) {
     const list = byWeek.get(game.week) ?? [];
     list.push(game);
     byWeek.set(game.week, list);
@@ -108,7 +127,7 @@ export default async function GamesPage({
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
         <h1 className="outline font-display text-4xl tracking-wide">Games</h1>
         <div className="flex gap-2">
           {years.map((year) => (
@@ -127,8 +146,17 @@ export default async function GamesPage({
         </div>
       </div>
 
+      <div className="mb-8">
+        <GameFilters
+          weeks={allWeeks}
+          managers={allManagers}
+          activeWeek={activeWeek}
+          activeManager={activeManager}
+        />
+      </div>
+
       {weeks.length === 0 ? (
-        <p className="font-body opacity-60">No games found for {activeYear}.</p>
+        <p className="font-body opacity-60">No games match this filter.</p>
       ) : (
         <div className="space-y-10">
           {weeks.map((week) => {
