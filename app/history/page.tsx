@@ -4,6 +4,7 @@ import {
   getAllTeamGameScores,
   getAllPlayedGames,
   buildHeadToHead,
+  getDivisionTitleCountsByManager,
   type GameResult,
 } from "@/lib/queries";
 
@@ -50,14 +51,64 @@ function RecordCard({
   return matchupId ? <Link href={`/games/${matchupId}`}>{content}</Link> : content;
 }
 
+// Used for blowout/nailbiter -- leads with the margin of victory (what
+// actually makes those two records notable) instead of just one team's raw
+// score, and always shows both teams' scores side by side.
+function MarginRecordCard({
+  title,
+  winnerManager,
+  winnerTeam,
+  winnerPoints,
+  loserManager,
+  loserTeam,
+  loserPoints,
+  season,
+  week,
+  matchupId,
+}: {
+  title: string;
+  winnerManager: string;
+  winnerTeam: string | null;
+  winnerPoints: number;
+  loserManager: string;
+  loserTeam: string | null;
+  loserPoints: number;
+  season: number;
+  week: number;
+  matchupId: string;
+}) {
+  const margin = Math.abs(winnerPoints - loserPoints);
+  return (
+    <Link href={`/games/${matchupId}`}>
+      <div className="panel p-5 hover:border-[var(--color-gold)] transition-colors h-full">
+        <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2">{title}</p>
+        <p className="font-display text-3xl text-[var(--color-gold)]">Won by {margin.toFixed(1)}</p>
+        <p className="font-body mt-2">
+          {winnerTeam ?? winnerManager}{" "}
+          <span className="font-mono text-sm text-[rgba(32,32,15,0.6)]">({winnerPoints.toFixed(1)})</span>
+        </p>
+        <p className="font-mono text-xs text-[rgba(32,32,15,0.5)]">{winnerManager}</p>
+        <p className="font-body mt-2 text-[rgba(32,32,15,0.7)]">
+          def. {loserTeam ?? loserManager}{" "}
+          <span className="font-mono text-sm">({loserPoints.toFixed(1)})</span>
+        </p>
+        <p className="font-mono text-xs text-[rgba(32,32,15,0.4)] mt-2">
+          {season} Wk {week}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
 export default async function HistoryPage() {
-  const [careerStats, teamScores, playedGames] = await Promise.all([
+  const [careerStats, teamScores, playedGames, divisionTitles] = await Promise.all([
     getCareerStats(),
     getAllTeamGameScores(),
     getAllPlayedGames(),
+    getDivisionTitleCountsByManager(),
   ]);
 
-  const h2h = buildHeadToHead(teamScores);
+  const { summary: h2h, games: h2hGames } = buildHeadToHead(teamScores);
   const managers = Array.from(new Set(teamScores.map((r) => r.manager_name))).sort();
 
   const scored = teamScores.filter((r) => r.points != null);
@@ -65,20 +116,35 @@ export default async function HistoryPage() {
   const lowest = [...scored].sort((a, b) => (a.points ?? 0) - (b.points ?? 0))[0];
 
   const withMargin = playedGames
-    .filter((g): g is GameResult & { home_points: number; away_points: number } =>
-      g.home_points != null && g.away_points != null
+    .filter(
+      (g): g is GameResult & { home_points: number; away_points: number } =>
+        g.home_points != null && g.away_points != null
     )
     .map((g) => ({ ...g, margin: Math.abs(g.home_points - g.away_points) }));
 
   const blowout = [...withMargin].sort((a, b) => b.margin - a.margin)[0];
-  const nailbiter = [...withMargin].sort((a, b) => a.margin - b.margin)[0];
+  const nailbiter = [...withMargin].filter((g) => g.margin > 0).sort((a, b) => a.margin - b.margin)[0];
 
-  const blowoutWinner =
-    blowout && blowout.home_points > blowout.away_points
-      ? { manager: blowout.home_manager_name, team: blowout.home_team_name, pts: blowout.home_points, oppManager: blowout.away_manager_name, oppPts: blowout.away_points }
-      : blowout
-      ? { manager: blowout.away_manager_name!, team: blowout.away_team_name, pts: blowout.away_points, oppManager: blowout.home_manager_name, oppPts: blowout.home_points }
-      : null;
+  function toWinnerLoser(game: (typeof withMargin)[number]) {
+    const homeWon = game.home_points > game.away_points;
+    return homeWon
+      ? {
+          winnerManager: game.home_manager_name,
+          winnerTeam: game.home_team_name,
+          winnerPoints: game.home_points,
+          loserManager: game.away_manager_name ?? "Unknown",
+          loserTeam: game.away_team_name,
+          loserPoints: game.away_points,
+        }
+      : {
+          winnerManager: game.away_manager_name ?? "Unknown",
+          winnerTeam: game.away_team_name,
+          winnerPoints: game.away_points,
+          loserManager: game.home_manager_name,
+          loserTeam: game.home_team_name,
+          loserPoints: game.home_points,
+        };
+  }
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
@@ -87,7 +153,7 @@ export default async function HistoryPage() {
       <section className="mb-12">
         <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Career Standings</h2>
         <div className="panel overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-left text-[rgba(32,32,15,0.5)] font-mono text-xs uppercase">
                 <th className="px-4 py-3 font-normal">Manager</th>
@@ -97,6 +163,7 @@ export default async function HistoryPage() {
                 <th className="px-4 py-3 font-normal text-right">PF</th>
                 <th className="px-4 py-3 font-normal text-right">PA</th>
                 <th className="px-4 py-3 font-normal text-right">Playoffs</th>
+                <th className="px-4 py-3 font-normal text-right">Div. Titles</th>
                 <th className="px-4 py-3 font-normal text-right">Titles</th>
               </tr>
             </thead>
@@ -104,6 +171,7 @@ export default async function HistoryPage() {
               {careerStats.map((m) => {
                 const games = m.total_wins + m.total_losses + m.total_ties;
                 const winPct = games > 0 ? (m.total_wins + m.total_ties * 0.5) / games : 0;
+                const divTitles = divisionTitles[m.manager_name] ?? 0;
                 return (
                   <tr key={m.manager_id} className="border-t border-[rgba(32,32,15,0.12)]">
                     <td className="px-4 py-2.5 font-body">{m.manager_name}</td>
@@ -112,14 +180,19 @@ export default async function HistoryPage() {
                     <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                       {(winPct * 100).toFixed(0)}%
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-right">
-                      {fmt(m.total_points_for)}
-                    </td>
+                    <td className="px-4 py-2.5 font-mono text-right">{fmt(m.total_points_for)}</td>
                     <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                       {fmt(m.total_points_against)}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
                       {m.playoff_appearances}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-right">
+                      {divTitles > 0 ? (
+                        <span className="text-[var(--color-rust)] font-bold">{divTitles}</span>
+                      ) : (
+                        <span className="text-[rgba(32,32,15,0.3)]">0</span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-right">
                       {m.championships > 0 ? (
@@ -165,27 +238,19 @@ export default async function HistoryPage() {
               matchupId={lowest.matchup_id}
             />
           )}
-          {blowoutWinner && blowout && (
-            <RecordCard
+          {blowout && (
+            <MarginRecordCard
               title="Biggest Blowout"
-              points={blowoutWinner.pts}
-              manager={blowoutWinner.manager}
-              team={blowoutWinner.team}
-              opponentPoints={blowoutWinner.oppPts}
-              opponentManager={blowoutWinner.oppManager}
+              {...toWinnerLoser(blowout)}
               season={blowout.season_year}
               week={blowout.week}
               matchupId={blowout.home_matchup_id}
             />
           )}
           {nailbiter && (
-            <RecordCard
+            <MarginRecordCard
               title="Closest Game"
-              points={nailbiter.home_points}
-              manager={nailbiter.home_manager_name}
-              team={nailbiter.home_team_name}
-              opponentPoints={nailbiter.away_points}
-              opponentManager={nailbiter.away_manager_name}
+              {...toWinnerLoser(nailbiter)}
               season={nailbiter.season_year}
               week={nailbiter.week}
               matchupId={nailbiter.home_matchup_id}
@@ -204,22 +269,58 @@ export default async function HistoryPage() {
             return (
               <details key={manager} className="panel px-5 py-3">
                 <summary className="font-body cursor-pointer">{manager}</summary>
-                <table className="w-full text-sm mt-3">
-                  <tbody>
-                    {opponentNames.map((opp) => {
-                      const rec = opponents[opp];
-                      return (
-                        <tr key={opp} className="border-t border-[rgba(32,32,15,0.12)]">
-                          <td className="py-1.5 font-body text-[rgba(32,32,15,0.8)]">{opp}</td>
-                          <td className="py-1.5 font-mono text-right text-[rgba(32,32,15,0.7)]">
+                <div className="mt-3 space-y-4">
+                  {opponentNames.map((opp) => {
+                    const rec = opponents[opp];
+                    const games = h2hGames[manager]?.[opp] ?? [];
+                    return (
+                      <details key={opp} className="border-t border-[rgba(32,32,15,0.12)] pt-3">
+                        <summary className="cursor-pointer flex items-center justify-between font-body text-[rgba(32,32,15,0.85)]">
+                          <span>{opp}</span>
+                          <span className="font-mono text-sm text-[rgba(32,32,15,0.6)]">
                             {rec.wins}-{rec.losses}
                             {rec.ties > 0 ? `-${rec.ties}` : ""}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </span>
+                        </summary>
+                        <table className="w-full text-sm mt-2 mb-1">
+                          <tbody>
+                            {games.map((g) => (
+                              <tr key={g.matchup_id} className="border-t border-[rgba(32,32,15,0.08)]">
+                                <td className="py-1.5 font-mono text-xs text-[rgba(32,32,15,0.5)]">
+                                  {g.season_year} Wk {g.week}
+                                </td>
+                                <td className="py-1.5 font-mono text-right">
+                                  {g.points.toFixed(1)} - {g.opponent_points.toFixed(1)}
+                                </td>
+                                <td className="py-1.5 pl-3 font-mono text-xs">
+                                  <span
+                                    className={
+                                      g.result === "W"
+                                        ? "text-[var(--color-gold)] font-bold"
+                                        : g.result === "L"
+                                        ? "text-[rgba(32,32,15,0.5)]"
+                                        : "text-[rgba(32,32,15,0.5)]"
+                                    }
+                                  >
+                                    {g.result}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 pl-3 text-right">
+                                  <Link
+                                    href={`/games/${g.matchup_id}`}
+                                    className="font-mono text-xs text-[rgba(32,32,15,0.5)] hover:text-[var(--color-rust)] underline"
+                                  >
+                                    Lineups
+                                  </Link>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </details>
+                    );
+                  })}
+                </div>
               </details>
             );
           })}
