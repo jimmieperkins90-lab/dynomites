@@ -76,7 +76,7 @@ body {
   box-shadow: 5px 6px 0 rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 /* Championship banner: black-and-gold so it reads as the clear standout
