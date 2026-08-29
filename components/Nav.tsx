@@ -7,7 +7,9 @@ const LINKS = [
   { href: "/", label: "Home" },
   { href: "/standings", label: "Standings" },
   { href: "/games", label: "Games" },
+  { href: "/players", label: "Players" },
   { href: "/history", label: "History" },
+  { href: "/betting", label: "Betting" },
   { href: "/articles", label: "Articles" },
   { href: "/valuations", label: "Valuations" },
 ];
@@ -20,8 +22,8 @@ export function Nav() {
       className="w-full border-b-4 border-[var(--color-ink)]"
       style={{ backgroundColor: "var(--color-green-deep)" }}
     >
-      <div className="max-w-4xl mx-auto px-4 flex items-center gap-6 h-16">
-        <span className="outline font-display text-lg tracking-widest flex items-center gap-2">
+      <div className="max-w-4xl mx-auto px-4 flex items-center gap-6 h-16 overflow-x-auto">
+        <span className="outline font-display text-lg tracking-widest flex items-center gap-2 shrink-0">
           <svg
             width="20"
             height="20"
@@ -38,14 +40,14 @@ export function Nav() {
           </svg>
           DYNO MITES
         </span>
-        <div className="flex gap-1">
+        <div className="flex gap-1 shrink-0">
           {LINKS.map((link) => {
             const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
             return (
               <Link
                 key={link.href}
                 href={link.href}
-                className="font-body text-sm font-extrabold px-3 py-1.5 rounded"
+                className="font-body text-sm font-extrabold px-3 py-1.5 rounded whitespace-nowrap"
                 style={{
                   color: active ? "var(--color-cream)" : "rgba(242, 232, 201, 0.6)",
                 }}
