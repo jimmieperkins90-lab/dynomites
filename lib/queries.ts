@@ -211,6 +211,23 @@ export async function getDivisionChampions(year: number): Promise<StandingsRow[]
     .map(([, row]) => row);
 }
 
+// Tallies division titles per manager across every season. Skips any
+// division "champion" from a season with 0 games played (same premature-
+// data guard used on the homepage banners), so an unstarted season can
+// never award a phantom division title.
+export async function getDivisionTitleCountsByManager(): Promise<Record<string, number>> {
+  const years = await getSeasonYears();
+  const counts: Record<string, number> = {};
+  for (const year of years) {
+    const champs = await getDivisionChampions(year);
+    for (const team of champs) {
+      if (team.wins + team.losses + team.ties === 0) continue;
+      counts[team.manager_name] = (counts[team.manager_name] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
 export type Article = {
   id: string;
   title: string;
@@ -358,8 +375,27 @@ export async function getAllPlayedGames(): Promise<GameResult[]> {
   return data as GameResult[];
 }
 
-export function buildHeadToHead(rows: TeamGameScore[]) {
-  const table: Record<string, Record<string, { wins: number; losses: number; ties: number }>> = {};
+export type HeadToHeadGame = {
+  matchup_id: string;
+  season_year: number;
+  week: number;
+  points: number;
+  opponent_points: number;
+  result: "W" | "L" | "T";
+};
+
+export type HeadToHeadData = {
+  summary: Record<string, Record<string, { wins: number; losses: number; ties: number }>>;
+  games: Record<string, Record<string, HeadToHeadGame[]>>;
+};
+
+// Builds both the win/loss/tie summary AND the full per-game history for
+// every manager pairing, so the head-to-head UI can show a record at a
+// glance and expand into every individual matchup (season, week, score,
+// and a link into the existing per-game lineup page).
+export function buildHeadToHead(rows: TeamGameScore[]): HeadToHeadData {
+  const summary: HeadToHeadData["summary"] = {};
+  const games: HeadToHeadData["games"] = {};
 
   for (const row of rows) {
     if (!row.opponent_manager_name || row.points == null || row.opponent_points == null) {
@@ -367,13 +403,244 @@ export function buildHeadToHead(rows: TeamGameScore[]) {
     }
     const a = row.manager_name;
     const b = row.opponent_manager_name;
-    table[a] = table[a] ?? {};
-    table[a][b] = table[a][b] ?? { wins: 0, losses: 0, ties: 0 };
+    summary[a] = summary[a] ?? {};
+    summary[a][b] = summary[a][b] ?? { wins: 0, losses: 0, ties: 0 };
+    games[a] = games[a] ?? {};
+    games[a][b] = games[a][b] ?? [];
 
-    if (row.points > row.opponent_points) table[a][b].wins += 1;
-    else if (row.points < row.opponent_points) table[a][b].losses += 1;
-    else table[a][b].ties += 1;
+    let result: "W" | "L" | "T";
+    if (row.points > row.opponent_points) {
+      summary[a][b].wins += 1;
+      result = "W";
+    } else if (row.points < row.opponent_points) {
+      summary[a][b].losses += 1;
+      result = "L";
+    } else {
+      summary[a][b].ties += 1;
+      result = "T";
+    }
+
+    games[a][b].push({
+      matchup_id: row.matchup_id,
+      season_year: row.season_year,
+      week: row.week,
+      points: row.points,
+      opponent_points: row.opponent_points,
+      result,
+    });
   }
 
-  return table;
+  for (const a of Object.keys(games)) {
+    for (const b of Object.keys(games[a])) {
+      games[a][b].sort((x, y) => x.season_year - y.season_year || x.week - y.week);
+    }
+  }
+
+  return { summary, games };
+}
+
+export type PlayerPerformance = {
+  matchup_id: string;
+  sleeper_player_id: string | null;
+  player_name: string | null;
+  position: string | null;
+  points: number | null;
+  projected_points: number | null;
+  started: boolean;
+  team_season_id: string;
+  team_name: string | null;
+  manager_name: string;
+  season_year: number;
+  week: number;
+  opponent_team_name: string | null;
+  opponent_manager_name: string | null;
+};
+
+// Every individual lineup entry with real points, joined against
+// team_game_scores for week/season/opponent context. team_game_scores.matchup_id
+// and lineups.matchup_id both reference the same per-team matchups.id row, so
+// they join 1:1 with no ambiguity.
+export async function getAllPlayerPerformances(): Promise<PlayerPerformance[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data: lineupRows, error: lineupError } = await supabase
+    .from("lineups")
+    .select(
+      "matchup_id, sleeper_player_id, player_name, position, points, projected_points, started, team_season_id"
+    )
+    .not("points", "is", null);
+  if (lineupError || !lineupRows) return [];
+
+  const { data: contextRows, error: contextError } = await supabase
+    .from("team_game_scores")
+    .select(
+      "matchup_id, season_year, week, team_name, manager_name, opponent_team_name, opponent_manager_name"
+    );
+  if (contextError || !contextRows) return [];
+
+  const contextByMatchup = new Map<string, any>();
+  for (const row of contextRows as any[]) {
+    contextByMatchup.set(row.matchup_id, row);
+  }
+
+  const performances: PlayerPerformance[] = [];
+  for (const l of lineupRows as any[]) {
+    const ctx = contextByMatchup.get(l.matchup_id);
+    if (!ctx) continue;
+    performances.push({
+      matchup_id: l.matchup_id,
+      sleeper_player_id: l.sleeper_player_id,
+      player_name: l.player_name,
+      position: l.position,
+      points: l.points,
+      projected_points: l.projected_points,
+      started: l.started,
+      team_season_id: l.team_season_id,
+      team_name: ctx.team_name,
+      manager_name: ctx.manager_name,
+      season_year: ctx.season_year,
+      week: ctx.week,
+      opponent_team_name: ctx.opponent_team_name,
+      opponent_manager_name: ctx.opponent_manager_name,
+    });
+  }
+
+  return performances;
+}
+
+// League-wide standard deviation of a single team's weekly score, computed
+// from every played game. Used as the spread of the normal distribution
+// behind the betting-line win probabilities below. Falls back to a generic
+// assumption if there isn't enough played history yet.
+export async function getLeagueScoreStdDev(): Promise<number> {
+  const scores = await getAllTeamGameScores();
+  const points = scores.map((s) => s.points).filter((p): p is number => p != null);
+  if (points.length < 2) return 20;
+  const mean = points.reduce((sum, p) => sum + p, 0) / points.length;
+  const variance =
+    points.reduce((sum, p) => sum + (p - mean) ** 2, 0) / (points.length - 1);
+  return Math.sqrt(variance);
+}
+
+// Standard normal CDF via the Abramowitz-Stegun erf approximation (no stats
+// library available in this environment).
+function normalCdf(z: number): number {
+  const sign = z < 0 ? -1 : 1;
+  const absZ = Math.abs(z) / Math.SQRT2;
+  const a1 = 0.254829592,
+    a2 = -0.284496736,
+    a3 = 1.421413741,
+    a4 = -1.453152027,
+    a5 = 1.061405429,
+    p = 0.3275911;
+  const t = 1 / (1 + p * absZ);
+  const y =
+    1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-absZ * absZ);
+  return 0.5 * (1 + sign * y);
+}
+
+function probToMoneyline(p: number): number {
+  const clamped = Math.min(Math.max(p, 0.001), 0.999);
+  if (clamped >= 0.5) return Math.round(-100 * (clamped / (1 - clamped)));
+  return Math.round(100 * ((1 - clamped) / clamped));
+}
+
+export type ProjectedLine = {
+  matchup_id: string;
+  week: number;
+  home_manager_name: string;
+  home_team_name: string | null;
+  home_projected: number;
+  away_manager_name: string;
+  away_team_name: string | null;
+  away_projected: number;
+  home_win_prob: number;
+  home_moneyline: number;
+  away_moneyline: number;
+  spread: number; // positive = home favored by this many points
+  over_under: number;
+};
+
+// Betting-style lines for every unplayed game in a season that currently has
+// projections synced (Sleeper generally only has projections for the next
+// unplayed week, not the whole remaining schedule -- games further out will
+// simply be absent from the returned list until their projections exist).
+export async function getProjectedLines(year: number): Promise<ProjectedLine[]> {
+  const [games, sigma] = await Promise.all([
+    getGamesForSeason(year),
+    getLeagueScoreStdDev(),
+  ]);
+  const combinedSigma = sigma * Math.SQRT2;
+
+  const lines: ProjectedLine[] = [];
+  for (const g of games) {
+    if (g.game_played || !g.away_team_season_id) continue;
+    if (g.home_projected_points == null || g.away_projected_points == null) continue;
+
+    const diff = g.home_projected_points - g.away_projected_points;
+    const homeWinProb = normalCdf(diff / combinedSigma);
+
+    lines.push({
+      matchup_id: g.home_matchup_id,
+      week: g.week,
+      home_manager_name: g.home_manager_name,
+      home_team_name: g.home_team_name,
+      home_projected: g.home_projected_points,
+      away_manager_name: g.away_manager_name ?? "Unknown",
+      away_team_name: g.away_team_name,
+      away_projected: g.away_projected_points,
+      home_win_prob: homeWinProb,
+      home_moneyline: probToMoneyline(homeWinProb),
+      away_moneyline: probToMoneyline(1 - homeWinProb),
+      spread: Math.round(diff * 2) / 2,
+      over_under: Math.round((g.home_projected_points + g.away_projected_points) * 2) / 2,
+    });
+  }
+  return lines;
+}
+
+export type ProjectedStandingsRow = StandingsRow & {
+  projected_additional_wins: number;
+  projected_final_wins: number;
+  games_with_projections: number;
+};
+
+// Current standings plus each team's win total nudged forward by the win
+// probability of every game that currently has a projection available. This
+// is necessarily partial -- see the caveat on getProjectedLines -- it is NOT
+// a full rest-of-season projection, only what's projectable right now.
+export async function getProjectedWinTotals(year: number): Promise<ProjectedStandingsRow[]> {
+  const [standings, lines] = await Promise.all([
+    getStandingsForSeason(year),
+    getProjectedLines(year),
+  ]);
+
+  const addedWins = new Map<string, number>();
+  const gameCounts = new Map<string, number>();
+
+  for (const line of lines) {
+    addedWins.set(
+      line.home_manager_name,
+      (addedWins.get(line.home_manager_name) ?? 0) + line.home_win_prob
+    );
+    addedWins.set(
+      line.away_manager_name,
+      (addedWins.get(line.away_manager_name) ?? 0) + (1 - line.home_win_prob)
+    );
+    gameCounts.set(line.home_manager_name, (gameCounts.get(line.home_manager_name) ?? 0) + 1);
+    gameCounts.set(line.away_manager_name, (gameCounts.get(line.away_manager_name) ?? 0) + 1);
+  }
+
+  return standings
+    .map((row) => {
+      const additional = addedWins.get(row.manager_name) ?? 0;
+      return {
+        ...row,
+        projected_additional_wins: additional,
+        projected_final_wins: row.wins + additional,
+        games_with_projections: gameCounts.get(row.manager_name) ?? 0,
+      };
+    })
+    .sort((a, b) => b.projected_final_wins - a.projected_final_wins);
 }
