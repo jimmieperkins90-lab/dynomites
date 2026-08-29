@@ -16,25 +16,20 @@ function ChampionsRafter({
   if (champions.length === 0) return null;
 
   return (
-    <div className="relative mb-14 pt-4">
-      <div
-        className="absolute left-[5%] right-[5%] top-0 h-3.5 rounded-sm border-2 border-[var(--color-ink)]"
-        style={{
-          background:
-            "repeating-linear-gradient(90deg, #6b4a2b, #6b4a2b 18px, #5c3f24 18px, #5c3f24 22px)",
-        }}
-      />
-      <div className="flex flex-wrap justify-center gap-8 pt-7">
+    <div className="relative mb-16 pt-4">
+      <div className="rafter-beam absolute left-[5%] right-[5%] top-0 h-4 rounded-sm border-2 border-[var(--color-ink)]" />
+      <div className="flex flex-wrap justify-center gap-10 pt-9">
         {champions.map(({ year, champion }) => (
-          <div key={year} className="relative w-56 pt-7">
-            <span className="absolute left-6 top-0 h-7 w-0.5 bg-[var(--color-ink)]" />
-            <span className="absolute right-6 top-0 h-7 w-0.5 bg-[var(--color-ink)]" />
-            <div className="ribbon px-4 py-3 text-center">
-              <p className="font-display text-2xl leading-none">{year}</p>
-              <p className="font-body font-extrabold text-xs uppercase tracking-wide text-[var(--color-rust)] mt-1">
+          <div key={year} className="relative w-40 pt-9">
+            <span className="absolute left-3.5 top-5 h-4 w-0.5 bg-[var(--color-ink)]" />
+            <span className="absolute right-3.5 top-5 h-4 w-0.5 bg-[var(--color-ink)]" />
+            <div className="banner-pole absolute top-8 left-0.5 right-0.5 h-2 z-10" />
+            <div className="banner-flag mt-9 px-3 py-5 text-center">
+              <p className="font-display text-2xl leading-none text-[var(--color-gold)]">{year}</p>
+              <p className="font-body font-extrabold text-xs text-[var(--color-cream)] mt-2">
                 {champion.team_name ?? champion.manager_name}
               </p>
-              <p className="font-body text-xs opacity-60 mt-1">
+              <p className="font-body text-[0.65rem] font-semibold text-[var(--color-cream)]/60 mt-1">
                 {champion.manager_name} · {champion.wins}-{champion.losses}
                 {champion.ties > 0 ? `-${champion.ties}` : ""}
               </p>
@@ -78,11 +73,14 @@ type SeasonData = {
 };
 
 function SeasonSection({ season, isFirst }: { season: SeasonData; isFirst: boolean }) {
-  if (season.divisionChamps.length === 0) return null;
+  const playedDivisionChamps = season.divisionChamps.filter(
+    (team) => team.wins + team.losses + team.ties > 0
+  );
+  if (playedDivisionChamps.length === 0) return null;
 
   return (
     <section className={isFirst ? "" : "mt-12 pt-10 border-t-2 border-[var(--color-ink)]/15"}>
-      <DivisionBanners divisions={season.divisionChamps} year={season.year} />
+      <DivisionBanners divisions={playedDivisionChamps} year={season.year} />
     </section>
   );
 }
@@ -120,7 +118,10 @@ export default async function LandingPage() {
   );
 
   const champions = seasons
-    .filter((s): s is SeasonData & { champion: StandingsRow } => s.champion !== null)
+    .filter(
+      (s): s is SeasonData & { champion: StandingsRow } =>
+        s.champion !== null && s.champion.wins + s.champion.losses + s.champion.ties > 0
+    )
     .map((s) => ({ year: s.year, champion: s.champion }));
 
   return (
