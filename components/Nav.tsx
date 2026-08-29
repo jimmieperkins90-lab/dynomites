@@ -16,9 +16,28 @@ export function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="w-full border-b border-olive/30 bg-basalt">
-      <div className="max-w-4xl mx-auto px-4 flex items-center gap-6 h-14">
-        <span className="font-display text-lg text-amber tracking-widest">DYNO MITES</span>
+    <nav
+      className="w-full border-b-4 border-[var(--color-ink)]"
+      style={{ backgroundColor: "var(--color-green-deep)" }}
+    >
+      <div className="max-w-4xl mx-auto px-4 flex items-center gap-6 h-16">
+        <span className="outline font-display text-lg tracking-widest flex items-center gap-2">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--color-cream)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 4 L7 12" />
+            <path d="M12 3 L12 12" />
+            <path d="M18 4 L17 12" />
+          </svg>
+          DYNO MITES
+        </span>
         <div className="flex gap-1">
           {LINKS.map((link) => {
             const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
@@ -26,9 +45,10 @@ export function Nav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`font-mono text-sm px-3 py-1.5 rounded ${
-                  active ? "text-amber" : "text-bone/60 hover:text-bone"
-                }`}
+                className="font-body text-sm font-extrabold px-3 py-1.5 rounded"
+                style={{
+                  color: active ? "var(--color-cream)" : "rgba(242, 232, 201, 0.6)",
+                }}
               >
                 {link.label}
               </Link>
