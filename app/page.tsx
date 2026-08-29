@@ -41,28 +41,28 @@ function HangingBanner({
   year: number;
 }) {
   return (
-    <div className="relative w-64">
+    <div className="relative w-72">
       <div className="relative h-8">
-        <span className="absolute left-6 top-0 h-8 w-px bg-[var(--color-ink)]/70" />
-        <span className="absolute right-6 top-0 h-8 w-px bg-[var(--color-ink)]/70" />
+        <span className="absolute left-7 top-0 h-8 w-px bg-[var(--color-ink)]" />
+        <span className="absolute right-7 top-0 h-8 w-px bg-[var(--color-ink)]" />
       </div>
-      <div className={`banner-flag ${colorClass} min-h-80`}>
+      <div className={`banner-flag ${colorClass} min-h-[26rem]`}>
         <div className="banner-rod" />
-        <div className="banner-body px-4 py-5 text-center">
-          <p className="font-display text-sm sm:text-base leading-snug tracking-wide uppercase text-[var(--color-gold)]">
+        <div className="banner-body px-5 py-6 text-center">
+          <p className="font-display text-2xl leading-snug tracking-wide uppercase text-[var(--color-gold)]">
             {titleLine}
           </p>
-          <div className="h-px bg-[var(--color-cream)]/30 my-3 mx-8" />
-          <p className="font-display text-xl leading-snug text-[var(--color-cream)] break-words">
+          <div className="h-px bg-[rgba(242,232,201,0.3)] my-3 mx-8" />
+          <p className="font-display text-3xl leading-snug text-[var(--color-cream)] break-words">
             {teamName}
           </p>
-          <p className="font-body text-sm font-bold text-[var(--color-cream)]/90 mt-2 break-words">
+          <p className="font-body text-2xl font-bold text-[var(--color-cream)] mt-3 break-words">
             {owner}
           </p>
-          <p className="font-body text-sm font-semibold text-[var(--color-cream)]/75 mt-1">
+          <p className="font-body text-xl font-semibold text-[var(--color-cream)] mt-2">
             {record}
           </p>
-          <p className="font-display text-lg text-[var(--color-gold)] mt-2">{year}</p>
+          <p className="font-display text-3xl text-[var(--color-gold)] mt-3">{year}</p>
         </div>
       </div>
     </div>
