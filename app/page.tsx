@@ -33,20 +33,18 @@ function HangingBanner({
   subtitle: string;
 }) {
   return (
-    <div className="relative w-56">
-      <div className="relative h-14">
-        <span className="absolute left-5 top-0 h-11 w-0.5 bg-[var(--color-ink)]" />
-        <span className="absolute right-5 top-0 h-11 w-0.5 bg-[var(--color-ink)]" />
-        <div className="banner-pole absolute bottom-0 left-0.5 right-0.5 h-3" />
+    <div className="relative w-64">
+      <div className="relative h-16">
+        <span className="absolute left-6 top-0 h-12 w-0.5 bg-[var(--color-ink)]" />
+        <span className="absolute right-6 top-0 h-12 w-0.5 bg-[var(--color-ink)]" />
+        <div className="banner-pole absolute bottom-0 left-0.5 right-0.5 h-4" />
       </div>
-      <div className={`banner-flag ${colorClass} h-64 px-4 py-6 text-center`}>
-        <p className="font-display text-3xl leading-none text-[var(--color-gold)]">{eyebrow}</p>
-        <p className="font-body font-extrabold text-sm text-[var(--color-cream)] mt-3 truncate px-1">
+      <div className={`banner-flag ${colorClass} h-72 px-4 pt-8 pb-16 text-center`}>
+        <p className="font-display text-4xl leading-none text-[var(--color-gold)]">{eyebrow}</p>
+        <p className="font-display text-xl leading-tight text-[var(--color-cream)] mt-3 truncate px-1">
           {title}
         </p>
-        <p className="font-body text-xs font-semibold text-[var(--color-cream)]/70 mt-2">
-          {subtitle}
-        </p>
+        <p className="font-body text-sm font-bold text-[var(--color-cream)]/80 mt-2">{subtitle}</p>
       </div>
     </div>
   );
@@ -79,46 +77,28 @@ function ChampionsRafter({
   );
 }
 
-function DivisionBanners({ divisions, year }: { divisions: StandingsRow[]; year: number }) {
+type DivisionChampionEntry = { year: number; team: StandingsRow };
+
+function DivisionChampionsRafter({ entries }: { entries: DivisionChampionEntry[] }) {
+  if (entries.length === 0) return null;
+
   return (
     <div className="relative mb-12 pt-6">
-      <p className="font-body font-extrabold text-xs uppercase tracking-widest text-center text-[var(--color-green-deep)] mb-5">
-        {year} Division Champions
-      </p>
-      <div className="rafter-beam absolute left-[12%] right-[12%] top-10 h-4 rounded-sm border-2 border-[var(--color-ink)]" />
+      <div className="rafter-beam absolute left-[10%] right-[10%] top-0 h-4 rounded-sm border-2 border-[var(--color-ink)]" />
       <div className="flex flex-wrap justify-center gap-10 pt-8">
-        {divisions.map((team) => (
+        {entries.map(({ year, team }) => (
           <HangingBanner
             key={team.team_season_id}
             colorClass={divisionColorClass(team.division)}
             eyebrow={team.division ?? ""}
             title={team.team_name ?? team.manager_name}
-            subtitle={`${team.manager_name} · ${team.wins}-${team.losses}${
+            subtitle={`${team.manager_name} · ${year} · ${team.wins}-${team.losses}${
               team.ties > 0 ? `-${team.ties}` : ""
             }`}
           />
         ))}
       </div>
     </div>
-  );
-}
-
-type SeasonData = {
-  year: number;
-  champion: StandingsRow | null;
-  divisionChamps: StandingsRow[];
-};
-
-function SeasonSection({ season, isFirst }: { season: SeasonData; isFirst: boolean }) {
-  const playedDivisionChamps = season.divisionChamps.filter(
-    (team) => team.wins + team.losses + team.ties > 0
-  );
-  if (playedDivisionChamps.length === 0) return null;
-
-  return (
-    <section className={isFirst ? "" : "mt-12 pt-10 border-t-2 border-[var(--color-ink)]/15"}>
-      <DivisionBanners divisions={playedDivisionChamps} year={season.year} />
-    </section>
   );
 }
 
@@ -135,7 +115,7 @@ export default async function LandingPage() {
 
   if (years.length === 0) {
     return (
-      <main className="max-w-3xl mx-auto px-4 py-10 text-center">
+      <main className="max-w-4xl mx-auto px-4 py-10 text-center">
         <h1 className="outline font-display text-5xl tracking-wide mb-4">Dyno Mites</h1>
         <p className="font-body opacity-70">
           No seasons found. Check that the site is connected to Supabase and a sync has run.
@@ -144,7 +124,7 @@ export default async function LandingPage() {
     );
   }
 
-  const seasons: SeasonData[] = await Promise.all(
+  const seasons = await Promise.all(
     years.map(async (year) => {
       const [champion, divisionChamps] = await Promise.all([
         getChampion(year),
@@ -156,10 +136,16 @@ export default async function LandingPage() {
 
   const champions = seasons
     .filter(
-      (s): s is SeasonData & { champion: StandingsRow } =>
+      (s): s is typeof s & { champion: StandingsRow } =>
         s.champion !== null && s.champion.wins + s.champion.losses + s.champion.ties > 0
     )
     .map((s) => ({ year: s.year, champion: s.champion }));
+
+  const divisionEntries: DivisionChampionEntry[] = seasons.flatMap((s) =>
+    s.divisionChamps
+      .filter((team) => team.wins + team.losses + team.ties > 0)
+      .map((team) => ({ year: s.year, team }))
+  );
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
@@ -169,10 +155,7 @@ export default async function LandingPage() {
       </p>
 
       <ChampionsRafter champions={champions} />
-
-      {seasons.map((season, i) => (
-        <SeasonSection key={season.year} season={season} isFirst={i === 0} />
-      ))}
+      <DivisionChampionsRafter entries={divisionEntries} />
 
       <div className="grid sm:grid-cols-2 gap-4 mt-12">
         {QUICK_LINKS.map((link) => (
