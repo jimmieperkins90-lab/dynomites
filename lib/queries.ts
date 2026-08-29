@@ -120,6 +120,29 @@ export async function getGameById(id: string): Promise<GameResult | null> {
   return data as GameResult;
 }
 
+// getGameById() (and therefore the /games/[id] route) only looks games up by
+// home_matchup_id. Several other tables/views (lineups, team_game_scores)
+// expose matchup ids from the PER-TEAM perspective, which equals
+// away_matchup_id for the away side of a game -- following that id straight
+// into a /games/[id] link 404s roughly half the time. This map translates
+// ANY per-team matchup id (home or away) to its canonical home_matchup_id so
+// every link in the app can resolve correctly regardless of which side of
+// the game a row came from.
+export async function getCanonicalMatchupIdMap(): Promise<Map<string, string>> {
+  const supabase = getSupabase();
+  const map = new Map<string, string>();
+  if (!supabase) return map;
+  const { data, error } = await supabase
+    .from("game_results")
+    .select("home_matchup_id, away_matchup_id");
+  if (error || !data) return map;
+  for (const row of data as { home_matchup_id: string; away_matchup_id: string | null }[]) {
+    map.set(row.home_matchup_id, row.home_matchup_id);
+    if (row.away_matchup_id) map.set(row.away_matchup_id, row.home_matchup_id);
+  }
+  return map;
+}
+
 export type StandingsRow = {
   team_season_id: string;
   team_name: string | null;
@@ -376,7 +399,8 @@ export async function getAllPlayedGames(): Promise<GameResult[]> {
 }
 
 export type HeadToHeadGame = {
-  matchup_id: string;
+  matchup_id: string; // per-team id -- do NOT link with this directly, see game_id
+  game_id: string; // canonical home_matchup_id, safe to use in /games/[id] links
   season_year: number;
   week: number;
   points: number;
@@ -390,10 +414,13 @@ export type HeadToHeadData = {
 };
 
 // Builds both the win/loss/tie summary AND the full per-game history for
-// every manager pairing, so the head-to-head UI can show a record at a
-// glance and expand into every individual matchup (season, week, score,
-// and a link into the existing per-game lineup page).
-export function buildHeadToHead(rows: TeamGameScore[]): HeadToHeadData {
+// every manager pairing. Requires the canonical matchup-id map (see
+// getCanonicalMatchupIdMap) since team_game_scores.matchup_id is a per-team
+// id that can't be linked to /games/[id] directly.
+export function buildHeadToHead(
+  rows: TeamGameScore[],
+  canonicalIds: Map<string, string>
+): HeadToHeadData {
   const summary: HeadToHeadData["summary"] = {};
   const games: HeadToHeadData["games"] = {};
 
@@ -422,6 +449,7 @@ export function buildHeadToHead(rows: TeamGameScore[]): HeadToHeadData {
 
     games[a][b].push({
       matchup_id: row.matchup_id,
+      game_id: canonicalIds.get(row.matchup_id) ?? row.matchup_id,
       season_year: row.season_year,
       week: row.week,
       points: row.points,
@@ -440,7 +468,8 @@ export function buildHeadToHead(rows: TeamGameScore[]): HeadToHeadData {
 }
 
 export type PlayerPerformance = {
-  matchup_id: string;
+  matchup_id: string; // per-team id -- internal join key only, do not link with this
+  game_id: string; // canonical home_matchup_id, safe to use in /games/[id] links
   sleeper_player_id: string | null;
   player_name: string | null;
   position: string | null;
@@ -457,27 +486,29 @@ export type PlayerPerformance = {
 };
 
 // Every individual lineup entry with real points, joined against
-// team_game_scores for week/season/opponent context. team_game_scores.matchup_id
-// and lineups.matchup_id both reference the same per-team matchups.id row, so
-// they join 1:1 with no ambiguity.
+// team_game_scores for week/season/opponent context, with matchup ids
+// translated to the canonical home_matchup_id for safe /games/[id] links.
 export async function getAllPlayerPerformances(): Promise<PlayerPerformance[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  const { data: lineupRows, error: lineupError } = await supabase
-    .from("lineups")
-    .select(
-      "matchup_id, sleeper_player_id, player_name, position, points, projected_points, started, team_season_id"
-    )
-    .not("points", "is", null);
-  if (lineupError || !lineupRows) return [];
+  const [{ data: lineupRows, error: lineupError }, { data: contextRows, error: contextError }, canonicalIds] =
+    await Promise.all([
+      supabase
+        .from("lineups")
+        .select(
+          "matchup_id, sleeper_player_id, player_name, position, points, projected_points, started, team_season_id"
+        )
+        .not("points", "is", null),
+      supabase
+        .from("team_game_scores")
+        .select(
+          "matchup_id, season_year, week, team_name, manager_name, opponent_team_name, opponent_manager_name"
+        ),
+      getCanonicalMatchupIdMap(),
+    ]);
 
-  const { data: contextRows, error: contextError } = await supabase
-    .from("team_game_scores")
-    .select(
-      "matchup_id, season_year, week, team_name, manager_name, opponent_team_name, opponent_manager_name"
-    );
-  if (contextError || !contextRows) return [];
+  if (lineupError || !lineupRows || contextError || !contextRows) return [];
 
   const contextByMatchup = new Map<string, any>();
   for (const row of contextRows as any[]) {
@@ -490,6 +521,7 @@ export async function getAllPlayerPerformances(): Promise<PlayerPerformance[]> {
     if (!ctx) continue;
     performances.push({
       matchup_id: l.matchup_id,
+      game_id: canonicalIds.get(l.matchup_id) ?? l.matchup_id,
       sleeper_player_id: l.sleeper_player_id,
       player_name: l.player_name,
       position: l.position,
