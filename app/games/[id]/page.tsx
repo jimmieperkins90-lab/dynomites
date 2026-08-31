@@ -14,10 +14,10 @@ function LineupTable({
   teamPoints: number | null;
 }) {
   return (
-    <div className="fossil-card bg-basalt border border-olive/30 p-5">
+    <div className="panel p-5">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-bone/50 font-mono text-xs uppercase">
+          <tr className="text-left text-[rgba(32,32,15,0.5)] font-mono text-xs uppercase">
             <th className="pb-2 font-normal">Pos</th>
             <th className="pb-2 font-normal">Player</th>
             <th className="pb-2 font-normal text-right">Pts</th>
@@ -25,19 +25,19 @@ function LineupTable({
         </thead>
         <tbody>
           {starters.map((player) => (
-            <tr key={player.id} className="border-t border-olive/10">
-              <td className="py-1.5 font-mono text-xs text-olive">{player.position ?? "—"}</td>
-              <td className="py-1.5 font-body text-bone">{player.player_name ?? "Unknown"}</td>
-              <td className="py-1.5 font-mono text-right text-bone">
+            <tr key={player.id} className="border-t border-[rgba(32,32,15,0.12)]">
+              <td className="py-1.5 font-mono text-xs text-[var(--color-rust)]">{player.position ?? "—"}</td>
+              <td className="py-1.5 font-body">{player.player_name ?? "Unknown"}</td>
+              <td className="py-1.5 font-mono text-right">
                 {player.points != null ? player.points.toFixed(1) : "—"}
               </td>
             </tr>
           ))}
-          <tr className="border-t border-amber/40">
-            <td colSpan={2} className="py-2 font-display text-amber tracking-wide">
+          <tr className="border-t border-[var(--color-gold)]">
+            <td colSpan={2} className="py-2 font-display text-[var(--color-gold)] tracking-wide">
               Total
             </td>
-            <td className="py-2 font-mono text-right text-amber">
+            <td className="py-2 font-mono text-right text-[var(--color-gold)]">
               {teamPoints != null ? teamPoints.toFixed(1) : "—"}
             </td>
           </tr>
@@ -46,20 +46,20 @@ function LineupTable({
 
       {bench.length > 0 && (
         <details className="mt-4">
-          <summary className="font-mono text-xs text-bone/50 cursor-pointer hover:text-bone/80">
+          <summary className="font-mono text-xs text-[rgba(32,32,15,0.5)] cursor-pointer hover:text-[rgba(32,32,15,0.8)]">
             Bench ({bench.length})
           </summary>
           <table className="w-full text-sm mt-2">
             <tbody>
               {bench.map((player) => (
-                <tr key={player.id} className="border-t border-olive/10">
-                  <td className="py-1.5 font-mono text-xs text-bone/40 w-12">
+                <tr key={player.id} className="border-t border-[rgba(32,32,15,0.12)]">
+                  <td className="py-1.5 font-mono text-xs text-[rgba(32,32,15,0.4)] w-12">
                     {player.position ?? "—"}
                   </td>
-                  <td className="py-1.5 font-body text-bone/60">
+                  <td className="py-1.5 font-body text-[rgba(32,32,15,0.6)]">
                     {player.player_name ?? "Unknown"}
                   </td>
-                  <td className="py-1.5 font-mono text-right text-bone/60">
+                  <td className="py-1.5 font-mono text-right text-[rgba(32,32,15,0.6)]">
                     {player.points != null ? player.points.toFixed(1) : "—"}
                   </td>
                 </tr>
@@ -93,36 +93,47 @@ export default async function BoxScorePage({
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <Link href={`/games?season=${game.season_year}`} className="font-mono text-xs text-bone/50 hover:text-amber">
+      <Link
+        href={`/games?season=${game.season_year}`}
+        className="font-mono text-xs text-[rgba(32,32,15,0.5)] hover:text-[var(--color-gold)]"
+      >
         ← Back to Week {game.week}
       </Link>
 
       <div className="mt-4 mb-8 text-center">
         {game.is_playoff && (
-          <p className="font-mono text-xs text-fuse mb-2 uppercase tracking-widest">
+          <p className="font-mono text-xs text-[var(--color-gold)] mb-2 uppercase tracking-widest">
             {game.round_game ?? "Playoffs"}
           </p>
         )}
-        <p className="font-mono text-xs text-bone/50 mb-2">
+        <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] mb-2">
           {game.season_year} · Week {game.week}
         </p>
         <div className="flex items-center justify-center gap-6">
           <div className="text-right flex-1">
-            <p className={`font-display text-2xl tracking-wide ${homeWon ? "text-amber" : "text-bone"}`}>
+            <p
+              className={`font-display text-2xl tracking-wide ${
+                homeWon ? "text-[var(--color-gold)]" : ""
+              }`}
+            >
               {game.home_team_name ?? game.home_manager_name}
             </p>
-            <p className="font-mono text-xs text-bone/50">{game.home_manager_name}</p>
+            <p className="font-mono text-xs text-[rgba(32,32,15,0.5)]">{game.home_manager_name}</p>
           </div>
-          <div className="font-mono text-3xl text-bone shrink-0">
+          <div className="font-mono text-3xl shrink-0">
             {game.home_points?.toFixed(1) ?? "—"}
-            <span className="text-bone/30 mx-2">-</span>
+            <span className="text-[rgba(32,32,15,0.3)] mx-2">-</span>
             {game.away_points?.toFixed(1) ?? "—"}
           </div>
           <div className="text-left flex-1">
-            <p className={`font-display text-2xl tracking-wide ${awayWon ? "text-amber" : "text-bone"}`}>
+            <p
+              className={`font-display text-2xl tracking-wide ${
+                awayWon ? "text-[var(--color-gold)]" : ""
+              }`}
+            >
               {game.away_team_name ?? game.away_manager_name}
             </p>
-            <p className="font-mono text-xs text-bone/50">{game.away_manager_name}</p>
+            <p className="font-mono text-xs text-[rgba(32,32,15,0.5)]">{game.away_manager_name}</p>
           </div>
         </div>
       </div>
