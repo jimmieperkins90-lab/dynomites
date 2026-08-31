@@ -251,6 +251,58 @@ export async function getDivisionTitleCountsByManager(): Promise<Record<string, 
   return counts;
 }
 
+// Order playoff rounds should appear in within a bracket. Any round label
+// that doesn't match one of these (unexpected Sleeper bracket shape) is
+// appended after, alphabetically, rather than dropped.
+const PLAYOFF_ROUND_ORDER = ["Round 1", "Semifinal", "Championship", "3rd Place"];
+
+export type PlayoffRound = {
+  round: string;
+  games: GameResult[];
+};
+
+export type PlayoffBracket = {
+  winners: PlayoffRound[]; // the actual championship bracket
+  losers: PlayoffRound[]; // the consolation bracket
+  unplaced: GameResult[]; // is_playoff=true but phase wasn't set (sync data-quality gap)
+};
+
+// Builds the playoff bracket for a season from game_results, grouping by
+// phase (winners_bracket = championship bracket, losers_bracket =
+// consolation bracket) and ordering rounds the way they were actually
+// played. home_matchup_id doubles as the canonical id here already, so no
+// separate id-translation step is needed for the /games/[id] links.
+export async function getPlayoffBracket(year: number): Promise<PlayoffBracket> {
+  const games = await getGamesForSeason(year);
+  const playoffGames = games.filter((g) => g.is_playoff && g.away_team_season_id);
+
+  function bucket(phase: "winners_bracket" | "losers_bracket"): PlayoffRound[] {
+    const byRound = new Map<string, GameResult[]>();
+    for (const g of playoffGames) {
+      if (g.phase !== phase) continue;
+      const round = g.round_game ?? "Playoff";
+      (byRound.get(round) ?? byRound.set(round, []).get(round)!).push(g);
+    }
+    const known = PLAYOFF_ROUND_ORDER.filter((r) => byRound.has(r)).map((round) => ({
+      round,
+      games: byRound.get(round)!,
+    }));
+    const extra = Array.from(byRound.entries())
+      .filter(([round]) => !PLAYOFF_ROUND_ORDER.includes(round))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([round, roundGames]) => ({ round, games: roundGames }));
+    return [...known, ...extra];
+  }
+
+  const unplaced = playoffGames.filter((g) => g.phase !== "winners_bracket" && g.phase !== "losers_bracket");
+
+  return {
+    winners: bucket("winners_bracket"),
+    losers: bucket("losers_bracket"),
+    unplaced,
+  };
+}
+
 export type Article = {
   id: string;
   title: string;
@@ -406,12 +458,23 @@ export type HeadToHeadGame = {
   points: number;
   opponent_points: number;
   result: "W" | "L" | "T";
+  game_type: "Playoff" | "Consolation" | "Regular";
 };
 
 export type HeadToHeadData = {
   summary: Record<string, Record<string, { wins: number; losses: number; ties: number }>>;
   games: Record<string, Record<string, HeadToHeadGame[]>>;
 };
+
+function headToHeadGameType(row: TeamGameScore): "Playoff" | "Consolation" | "Regular" {
+  if (row.phase === "winners_bracket") return "Playoff";
+  if (row.phase === "losers_bracket") return "Consolation";
+  // A handful of rows have is_playoff=true but no phase set (a sync data-
+  // quality gap, same family as the premature-2026-row issue) -- treat
+  // those as Playoff rather than silently mislabeling them Regular.
+  if (row.is_playoff) return "Playoff";
+  return "Regular";
+}
 
 // Builds both the win/loss/tie summary AND the full per-game history for
 // every manager pairing. Requires the canonical matchup-id map (see
@@ -455,6 +518,7 @@ export function buildHeadToHead(
       points: row.points,
       opponent_points: row.opponent_points,
       result,
+      game_type: headToHeadGameType(row),
     });
   }
 
@@ -686,4 +750,40 @@ export async function getProjectedWinTotals(year: number): Promise<ProjectedStan
       };
     })
     .sort((a, b) => b.projected_final_wins - a.projected_final_wins);
+}
+
+export type DraftPick = {
+  id: string;
+  draft_id: string;
+  draft_type: "initial" | "rookie";
+  sleeper_draft_type: string | null; // Sleeper's own draft mechanic: "auction" | "snake" | "linear"
+  season_year: number;
+  round: number;
+  pick_no: number;
+  sleeper_player_id: string | null;
+  player_name: string | null;
+  position: string | null;
+  is_keeper: boolean;
+  team_season_id: string | null;
+  team_name: string | null;
+  manager_name: string | null;
+};
+
+// Every draft pick ever synced, across the initial (startup) draft and every
+// subsequent rookie draft. Reads from draft_picks_view, which joins
+// drafts + draft_picks + seasons + team_seasons + managers so the caller
+// doesn't need to do that stitching. Populated by the draft-sync block in
+// syncSleeper.ts -- empty until that has run at least once.
+export async function getDraftHistory(): Promise<DraftPick[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("draft_picks_view")
+    .select("*")
+    .order("season_year", { ascending: false })
+    .order("round", { ascending: true })
+    .order("pick_no", { ascending: true })
+    .limit(5000);
+  if (error || !data) return [];
+  return data as DraftPick[];
 }
