@@ -8,9 +8,13 @@ import {
   getLosersBracket,
   getPlayerMap,
   getWeekProjections,
+  getLeagueDrafts,
+  getDraftPicks,
   type SleeperMatchup,
   type BracketMatch,
   type PlayerProjections,
+  type SleeperDraft,
+  type SleeperDraftPick,
 } from "./sleeper";
 
 type Logger = (line: string) => void;
@@ -164,6 +168,60 @@ export async function runSleeperSync(
   // ---- matchups + lineups, week by week ----------------------------------
   const playerMap = await getPlayerMap();
   const cachedPlayerIds = new Set<string>();
+
+  // ---- draft(s) for this league -------------------------------------------
+  // Sleeper ties a draft to a specific league_id, so this only ever needs to
+  // look at the CURRENT leagueId being synced -- no need to separately walk
+  // the previous_league_id chain, since each season is already synced via
+  // its own leagueId (see previous_sleeper_league_id on seasons). A league
+  // with no previous_league_id is the first-ever season for this league
+  // lineage, so its draft is the initial/startup draft; every subsequent
+  // season's draft (on a continuing dynasty lineage) is a rookie draft.
+  const draftType: "initial" | "rookie" = league.previous_league_id ? "rookie" : "initial";
+  try {
+    const leagueDrafts: SleeperDraft[] = await getLeagueDrafts(leagueId);
+    for (const draft of leagueDrafts) {
+      const { data: draftRow, error: draftErr } = await db
+        .from("drafts")
+        .upsert(
+          {
+            season_id: season.id,
+            sleeper_draft_id: draft.draft_id,
+            sleeper_league_id: leagueId,
+            draft_type: draftType,
+            sleeper_draft_type: draft.type ?? null,
+          },
+          { onConflict: "sleeper_draft_id" }
+        )
+        .select()
+        .single();
+      if (draftErr) throw draftErr;
+
+      const picks: SleeperDraftPick[] = await getDraftPicks(draft.draft_id);
+      const pickRows = picks.map((pick) => {
+        const playerInfo = pick.player_id ? playerMap[pick.player_id] : undefined;
+        return {
+          draft_id: draftRow.id,
+          round: pick.round,
+          pick_no: pick.pick_no,
+          team_season_id: teamSeasonIdByRosterId.get(Number(pick.roster_id)) ?? null,
+          sleeper_player_id: pick.player_id ?? null,
+          player_name: playerInfo?.full_name ?? null,
+          position: playerInfo?.position ?? pick.metadata?.position ?? null,
+          is_keeper: Boolean(pick.is_keeper),
+        };
+      });
+      if (pickRows.length) {
+        const { error: pickErr } = await db
+          .from("draft_picks")
+          .upsert(pickRows, { onConflict: "draft_id,pick_no" });
+        if (pickErr) throw pickErr;
+      }
+      log(`Draft ${draft.draft_id} (${draftType}): synced ${pickRows.length} picks.`);
+    }
+  } catch (e) {
+    log(`Draft sync failed (non-fatal, rest of sync continues): ${e}`);
+  }
 
   for (let week = 1; week <= 18; week++) {
     let weekMatchups: SleeperMatchup[];
