@@ -138,7 +138,7 @@ export default async function BoxScorePage({
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 items-start">
         <LineupTable starters={home.starters} bench={home.bench} teamPoints={game.home_points} />
         <LineupTable starters={away.starters} bench={away.bench} teamPoints={game.away_points} />
       </div>
