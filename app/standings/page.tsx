@@ -13,7 +13,6 @@ function StandingsTable({ rows }: { rows: StandingsRow[] }) {
             <th className="px-4 py-3 font-normal">Team</th>
             <th className="px-4 py-3 font-normal text-right">W</th>
             <th className="px-4 py-3 font-normal text-right">L</th>
-            <th className="px-4 py-3 font-normal text-right">T</th>
             <th className="px-4 py-3 font-normal text-right">PF</th>
             <th className="px-4 py-3 font-normal text-right">PA</th>
           </tr>
@@ -35,7 +34,6 @@ function StandingsTable({ rows }: { rows: StandingsRow[] }) {
                 </td>
                 <td className="px-4 py-2.5 font-mono text-right">{team.wins}</td>
                 <td className="px-4 py-2.5 font-mono text-right">{team.losses}</td>
-                <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.6)]">{team.ties}</td>
                 <td className="px-4 py-2.5 font-mono text-right">
                   {team.points_for != null ? team.points_for.toFixed(1) : "—"}
                 </td>
