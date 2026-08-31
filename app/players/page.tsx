@@ -4,6 +4,8 @@ import { getAllPlayerPerformances } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 const POSITIONS = ["QB", "RB", "WR", "TE", "DEF", "K"];
+const TOP_PER_POSITION = 5;
+const TOP_OVERALL = 10;
 
 export default async function PlayersPage({
   searchParams,
@@ -22,13 +24,15 @@ export default async function PlayersPage({
     return true;
   });
 
-  const top = [...pool].sort((a, b) => (b.points ?? 0) - (a.points ?? 0)).slice(0, 50);
+  const top = [...pool].sort((a, b) => (b.points ?? 0) - (a.points ?? 0)).slice(0, TOP_OVERALL);
 
-  const bestByPosition = POSITIONS.map((pos) => {
+  const topByPosition = POSITIONS.map((pos) => {
     const candidates = all.filter((p) => p.started && (p.position ?? "").toUpperCase() === pos);
-    const best = [...candidates].sort((a, b) => (b.points ?? 0) - (a.points ?? 0))[0];
+    const best = [...candidates]
+      .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
+      .slice(0, TOP_PER_POSITION);
     return { pos, best };
-  }).filter((x) => x.best);
+  }).filter((x) => x.best.length > 0);
 
   const filterLink = (overrides: { position?: string | null; includeBench?: boolean }) => {
     const p = new URLSearchParams();
@@ -53,21 +57,32 @@ export default async function PlayersPage({
 
       <section className="mb-12">
         <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">
-          Best of Each Position
+          Top {TOP_PER_POSITION} by Position
         </h2>
-        <div className="grid sm:grid-cols-3 gap-4">
-          {bestByPosition.map(({ pos, best }) => (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {topByPosition.map(({ pos, best }) => (
             <div key={pos} className="panel p-4">
-              <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-1">
+              <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-3">
                 {pos}
               </p>
-              <p className="font-display text-2xl text-[var(--color-gold)]">
-                {best!.points != null ? best!.points.toFixed(1) : "—"}
-              </p>
-              <p className="font-body mt-1">{best!.player_name ?? "Unknown"}</p>
-              <p className="font-mono text-xs text-[rgba(32,32,15,0.5)]">
-                {best!.manager_name} · {best!.season_year} Wk {best!.week}
-              </p>
+              <ol className="space-y-2">
+                {best.map((p, i) => (
+                  <li key={`${p.matchup_id}-${p.sleeper_player_id}-${i}`} className="flex items-baseline gap-3">
+                    <span className="font-mono text-xs text-[rgba(32,32,15,0.4)] w-4 shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="font-display text-lg text-[var(--color-gold)] w-16 shrink-0">
+                      {p.points != null ? p.points.toFixed(1) : "—"}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="font-body block truncate">{p.player_name ?? "Unknown"}</span>
+                      <span className="font-mono text-[10px] text-[rgba(32,32,15,0.5)] block truncate">
+                        {p.manager_name} · {p.season_year} Wk {p.week}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
             </div>
           ))}
         </div>
@@ -75,7 +90,9 @@ export default async function PlayersPage({
 
       <section>
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="font-display text-xl text-[var(--color-rust)] tracking-wide">Top 50 All-Time</h2>
+          <h2 className="font-display text-xl text-[var(--color-rust)] tracking-wide">
+            Top {TOP_OVERALL} All-Time
+          </h2>
           <div className="flex gap-2 flex-wrap">
             <Link href={filterLink({ position: null })} className={chipClass(!activePosition)}>
               All
