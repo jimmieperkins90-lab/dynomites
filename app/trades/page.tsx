@@ -44,10 +44,10 @@ function TradeCard({ trade }: { trade: Trade }) {
                       playerName={item.player_name}
                       label={itemLabel(item)}
                     />
-                  ) : item.team_season_id && item.traded_pick_season && item.traded_pick_round ? (
+                  ) : item.original_manager_id && item.traded_pick_season && item.traded_pick_round ? (
                     <TradeLineageButton
                       kind="draft_pick"
-                      startTeamSeasonId={item.team_season_id}
+                      originalManagerId={item.original_manager_id}
                       season={item.traded_pick_season}
                       round={item.traded_pick_round}
                       label={itemLabel(item)}
