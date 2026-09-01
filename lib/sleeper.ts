@@ -95,6 +95,33 @@ export type SleeperDraftPick = {
   };
 };
 
+// Sleeper's transactions endpoint returns waivers, free-agent moves, AND
+// trades all mixed together for a given week ("leg") -- callers should
+// filter to type === "trade" && status === "complete". For a trade, both
+// sides of every swapped player show up once in `adds` (the roster
+// RECEIVING the player) and once in `drops` (the roster giving it up) --
+// `adds` alone is what a team received, which is all the ticker/trade
+// history needs. `draft_picks` entries describe a traded pick: `roster_id`
+// is whose original draft slot it is, `owner_id` is who holds it after this
+// transaction, `previous_owner_id` who held it before.
+export type SleeperTransaction = {
+  transaction_id: string;
+  type: string; // "trade" | "waiver" | "free_agent"
+  status: string; // "complete" | "failed" | ...
+  status_updated: number; // epoch ms
+  roster_ids: number[];
+  adds: Record<string, number> | null;
+  drops: Record<string, number> | null;
+  draft_picks: Array<{
+    season: string;
+    round: number;
+    roster_id: number;
+    previous_owner_id: number;
+    owner_id: number;
+  }>;
+  leg: number;
+};
+
 export function getLeague(leagueId: string) {
   return get<SleeperLeague>(`${BASE}/league/${leagueId}`);
 }
@@ -125,6 +152,10 @@ export function getLeagueDrafts(leagueId: string) {
 
 export function getDraftPicks(draftId: string) {
   return get<SleeperDraftPick[]>(`${BASE}/draft/${draftId}/picks`);
+}
+
+export function getLeagueTransactions(leagueId: string, week: number) {
+  return get<SleeperTransaction[]>(`${BASE}/league/${leagueId}/transactions/${week}`);
 }
 
 export function getNflState() {
