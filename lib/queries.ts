@@ -372,14 +372,19 @@ export type Article = {
 };
 
 export async function getArticles(): Promise<Article[]> {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("articles")
-    .select("id, title, slug, author, published_at, cover_image_url, body")
-    .order("published_at", { ascending: false });
-  if (error || !data) return [];
-  return data as Article[];
+  // TEMPORARY DIAGNOSTIC -- bypasses Supabase entirely to isolate where the
+  // "No articles published yet" bug actually is. Revert this once confirmed.
+  return [
+    {
+      id: "test-diagnostic-0000",
+      title: "DIAGNOSTIC TEST ARTICLE",
+      slug: "diagnostic-test",
+      author: "Debug",
+      published_at: "2026-01-01",
+      cover_image_url: null,
+      body: "If you can see this on the live site, the deployment is current and the page renders fine -- the real bug is specifically in the Supabase call. If you still see 'No articles published yet' instead, this deploy isn't running the code we think it is.",
+    },
+  ];
 }
 
 export async function getArticleBySlug(slug: string): Promise<Article | null> {
