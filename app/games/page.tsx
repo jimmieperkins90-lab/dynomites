@@ -1,8 +1,26 @@
 import Link from "next/link";
-import { getSeasonYears, getGamesForSeason, type GameResult } from "@/lib/queries";
+import {
+  getSeasonYears,
+  getGamesForSeason,
+  getPlayoffBracket,
+  type GameResult,
+  type PlayoffRound,
+} from "@/lib/queries";
 import { GameFilters } from "@/components/GameFilters";
 
 export const dynamic = "force-dynamic";
+
+function fmt(n: number | null | undefined) {
+  return n != null ? n.toFixed(1) : "—";
+}
+
+function pillClass(active: boolean) {
+  return `font-mono text-sm px-3 py-1.5 border rounded ${
+    active
+      ? "bg-[var(--color-gold)] text-[var(--color-ink)] border-[var(--color-gold)] font-bold"
+      : "border-[rgba(32,32,15,0.3)] text-[rgba(32,32,15,0.65)] hover:border-[var(--color-gold)]"
+  }`;
+}
 
 function ScoreLine({ game }: { game: GameResult }) {
   const played = game.game_played && game.home_points != null && game.away_points != null;
@@ -78,10 +96,58 @@ function ScoreLine({ game }: { game: GameResult }) {
   );
 }
 
+function BracketGameCard({ game }: { game: GameResult }) {
+  const homeWon = (game.home_points ?? 0) > (game.away_points ?? 0);
+  return (
+    <Link href={`/games/${game.home_matchup_id}`}>
+      <div className="panel px-4 py-3 hover:border-[var(--color-gold)] transition-colors">
+        <p className={`font-body text-sm ${homeWon ? "text-[var(--color-gold)] font-bold" : ""}`}>
+          {game.home_team_name ?? game.home_manager_name}{" "}
+          <span className="font-mono">{fmt(game.home_points)}</span>
+        </p>
+        <p className={`font-body text-sm ${!homeWon ? "text-[var(--color-gold)] font-bold" : ""}`}>
+          {game.away_team_name ?? game.away_manager_name}{" "}
+          <span className="font-mono">{fmt(game.away_points)}</span>
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[] }) {
+  if (rounds.length === 0) {
+    return (
+      <div>
+        <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
+        <p className="font-body text-sm opacity-60">No games yet.</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
+      <div className="space-y-4">
+        {rounds.map(({ round, games }) => (
+          <div key={round}>
+            <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2">
+              {round}
+            </p>
+            <div className="space-y-2">
+              {games.map((g) => (
+                <BracketGameCard key={g.home_matchup_id} game={g} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function GamesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ season?: string; week?: string; manager?: string }>;
+  searchParams: Promise<{ season?: string; week?: string; manager?: string; view?: string }>;
 }) {
   const years = await getSeasonYears();
   if (years.length === 0) {
@@ -97,6 +163,60 @@ export default async function GamesPage({
   const params = await searchParams;
   const requestedYear = params.season ? parseInt(params.season, 10) : undefined;
   const activeYear = years.includes(requestedYear ?? -1) ? (requestedYear as number) : years[0];
+  const activeView = params.view === "bracket" ? "bracket" : "schedule";
+
+  const yearLinkBase = activeView === "bracket" ? "&view=bracket" : "";
+
+  // ---- Bracket view -------------------------------------------------------
+  if (activeView === "bracket") {
+    const bracket = await getPlayoffBracket(activeYear);
+    return (
+      <main className="max-w-4xl mx-auto px-4 py-10">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+          <h1 className="outline font-display text-4xl tracking-wide">Games</h1>
+          <div className="flex gap-2">
+            {years.map((year) => (
+              <Link
+                key={year}
+                href={`/games?season=${year}${yearLinkBase}`}
+                className={pillClass(year === activeYear)}
+              >
+                {year}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2 mb-8">
+          <Link href={`/games?season=${activeYear}`} className={pillClass(false)}>
+            Schedule
+          </Link>
+          <Link href={`/games?season=${activeYear}&view=bracket`} className={pillClass(true)}>
+            Bracket
+          </Link>
+        </div>
+
+        {bracket.winners.length === 0 && bracket.losers.length === 0 ? (
+          <p className="font-body opacity-60">No playoff games for {activeYear} yet.</p>
+        ) : (
+          <>
+            <div className="grid sm:grid-cols-2 gap-8">
+              <BracketColumn title="Championship Bracket" rounds={bracket.winners} />
+              <BracketColumn title="Consolation Bracket" rounds={bracket.losers} />
+            </div>
+            {bracket.unplaced.length > 0 && (
+              <p className="font-mono text-xs text-[rgba(32,32,15,0.4)] mt-6">
+                {bracket.unplaced.length} playoff game{bracket.unplaced.length === 1 ? "" : "s"} couldn&apos;t be
+                placed in a bracket (missing bracket data from the sync).
+              </p>
+            )}
+          </>
+        )}
+      </main>
+    );
+  }
+
+  // ---- Schedule view (default) --------------------------------------------
   const activeWeek = params.week ? parseInt(params.week, 10) : null;
   const activeManager = params.manager ?? null;
 
@@ -131,19 +251,20 @@ export default async function GamesPage({
         <h1 className="outline font-display text-4xl tracking-wide">Games</h1>
         <div className="flex gap-2">
           {years.map((year) => (
-            <Link
-              key={year}
-              href={`/games?season=${year}`}
-              className={`font-mono text-sm px-3 py-1.5 border rounded ${
-                year === activeYear
-                  ? "bg-[var(--color-gold)] text-[var(--color-ink)] border-[var(--color-gold)] font-bold"
-                  : "border-[rgba(32,32,15,0.3)] text-[rgba(32,32,15,0.65)] hover:border-[var(--color-gold)]"
-              }`}
-            >
+            <Link key={year} href={`/games?season=${year}`} className={pillClass(year === activeYear)}>
               {year}
             </Link>
           ))}
         </div>
+      </div>
+
+      <div className="flex gap-2 mb-6">
+        <Link href={`/games?season=${activeYear}`} className={pillClass(true)}>
+          Schedule
+        </Link>
+        <Link href={`/games?season=${activeYear}&view=bracket`} className={pillClass(false)}>
+          Bracket
+        </Link>
       </div>
 
       <div className="mb-8">
