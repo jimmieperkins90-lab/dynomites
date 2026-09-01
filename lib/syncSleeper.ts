@@ -453,6 +453,7 @@ export async function runSleeperSync(
         itemRows.push({
           trade_id: tradeRow.id,
           team_season_id: teamSeasonIdByRosterId.get(pick.owner_id) ?? null,
+          previous_team_season_id: teamSeasonIdByRosterId.get(pick.previous_owner_id) ?? null,
           item_type: "draft_pick",
           traded_pick_season: Number(pick.season),
           traded_pick_round: pick.round,
