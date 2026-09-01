@@ -97,6 +97,12 @@ export async function runSleeperSync(
   // ---- team_seasons ------------------------------------------------------
   const rosters = await getRosters(leagueId);
   const teamSeasonIdByRosterId = new Map<number, string>();
+  // A traded FUTURE pick's original owner needs to survive years before
+  // that season's team_seasons row even exists (e.g. a 2027 pick traded in
+  // 2026) -- roster_id -> manager_id is stable across seasons within this
+  // league lineage, unlike a season-specific team_seasons id, so this is
+  // what "original owner" gets tagged with instead.
+  const managerIdByRosterId = new Map<number, string>();
 
   for (const r of rosters) {
     const managerId = r.owner_id ? managerIdByUserId.get(r.owner_id) : undefined;
@@ -128,6 +134,7 @@ export async function runSleeperSync(
       .single();
     if (error) throw error;
     teamSeasonIdByRosterId.set(r.roster_id, ts.id);
+    managerIdByRosterId.set(r.roster_id, managerId);
   }
 
   // ---- playoff brackets (best-effort phase/round labeling) --------------
@@ -454,6 +461,7 @@ export async function runSleeperSync(
           trade_id: tradeRow.id,
           team_season_id: teamSeasonIdByRosterId.get(pick.owner_id) ?? null,
           previous_team_season_id: teamSeasonIdByRosterId.get(pick.previous_owner_id) ?? null,
+          original_manager_id: managerIdByRosterId.get(pick.roster_id) ?? null,
           item_type: "draft_pick",
           traded_pick_season: Number(pick.season),
           traded_pick_round: pick.round,
