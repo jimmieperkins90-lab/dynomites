@@ -373,66 +373,18 @@ export type Article = {
 
 export async function getArticles(): Promise<Article[]> {
   const supabase = getSupabase();
-  if (!supabase) {
-    return [
-      {
-        id: "diag",
-        title: "DIAGNOSTIC: getSupabase() returned null",
-        slug: "diagnostic-test",
-        author: "Debug",
-        published_at: "2026-01-01",
-        cover_image_url: null,
-        body: "SUPABASE_URL or SUPABASE_ANON_KEY is missing/empty in this environment.",
-      },
-    ];
-  }
-
-  // TEMPORARY DIAGNOSTIC -- makes the real call, but instead of silently
-  // swallowing an error (the normal `if (error || !data) return [];`),
-  // surfaces exactly what Supabase returned as visible page content. Revert
-  // once we've seen the real error.
-  const { data, error, status, statusText } = await supabase
+  if (!supabase) return [];
+  const { data, error } = await supabase
     .from("articles")
     .select("id, title, slug, author, published_at, cover_image_url, body")
     .order("published_at", { ascending: false });
-
-  return [
-    {
-      id: "diag",
-      title: "DIAGNOSTIC RESULT",
-      slug: "diagnostic-test",
-      author: "Debug",
-      published_at: "2026-01-01",
-      cover_image_url: null,
-      body: JSON.stringify({ status, statusText, error, rowCount: data?.length ?? null, data }, null, 2),
-    },
-  ];
+  if (error || !data) return [];
+  return data as Article[];
 }
 
 export async function getArticleBySlug(slug: string): Promise<Article | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-
-  // TEMPORARY DIAGNOSTIC -- intercept the fake diagnostic slug so clicking
-  // through from the /articles listing shows the full, untruncated JSON
-  // result instead of a real (and therefore 404ing) DB lookup. Revert once
-  // we've seen the real error.
-  if (slug === "diagnostic-test") {
-    const { data, error, status, statusText } = await supabase
-      .from("articles")
-      .select("id, title, slug, author, published_at, cover_image_url, body")
-      .order("published_at", { ascending: false });
-    return {
-      id: "diag",
-      title: "DIAGNOSTIC RESULT (full)",
-      slug: "diagnostic-test",
-      author: "Debug",
-      published_at: "2026-01-01",
-      cover_image_url: null,
-      body: JSON.stringify({ status, statusText, error, rowCount: data?.length ?? null, data }, null, 2),
-    };
-  }
-
   const { data, error } = await supabase
     .from("articles")
     .select("id, title, slug, author, published_at, cover_image_url, body")
