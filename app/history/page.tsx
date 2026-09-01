@@ -6,10 +6,7 @@ import {
   buildHeadToHead,
   getDivisionTitleCountsByManager,
   getCanonicalMatchupIdMap,
-  getSeasonYears,
-  getPlayoffBracket,
   type GameResult,
-  type PlayoffRound,
 } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -104,83 +101,20 @@ function MarginRecordCard({
   );
 }
 
-function BracketGameCard({ game }: { game: GameResult }) {
-  const homeWon = (game.home_points ?? 0) > (game.away_points ?? 0);
-  return (
-    <Link href={`/games/${game.home_matchup_id}`}>
-      <div className="panel px-4 py-3 hover:border-[var(--color-gold)] transition-colors">
-        <p className={`font-body text-sm ${homeWon ? "text-[var(--color-gold)] font-bold" : ""}`}>
-          {game.home_team_name ?? game.home_manager_name}{" "}
-          <span className="font-mono">{fmt(game.home_points)}</span>
-        </p>
-        <p className={`font-body text-sm ${!homeWon ? "text-[var(--color-gold)] font-bold" : ""}`}>
-          {game.away_team_name ?? game.away_manager_name}{" "}
-          <span className="font-mono">{fmt(game.away_points)}</span>
-        </p>
-      </div>
-    </Link>
-  );
-}
-
-function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[] }) {
-  if (rounds.length === 0) {
-    return (
-      <div>
-        <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
-        <p className="font-body text-sm opacity-60">No games yet.</p>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
-      <div className="space-y-4">
-        {rounds.map(({ round, games }) => (
-          <div key={round}>
-            <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2">
-              {round}
-            </p>
-            <div className="space-y-2">
-              {games.map((g) => (
-                <BracketGameCard key={g.home_matchup_id} game={g} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const gameTypeBadgeClass: Record<"Playoff" | "Consolation" | "Regular", string> = {
   Playoff: "text-[var(--color-gold)]",
   Consolation: "text-[var(--color-rust)]",
   Regular: "text-[rgba(32,32,15,0.4)]",
 };
 
-export default async function HistoryPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ bracketSeason?: string }>;
-}) {
-  const [careerStats, teamScores, playedGames, divisionTitles, canonicalIds, seasonYears] = await Promise.all([
+export default async function HistoryPage() {
+  const [careerStats, teamScores, playedGames, divisionTitles, canonicalIds] = await Promise.all([
     getCareerStats(),
     getAllTeamGameScores(),
     getAllPlayedGames(),
     getDivisionTitleCountsByManager(),
     getCanonicalMatchupIdMap(),
-    getSeasonYears(),
   ]);
-
-  const params = await searchParams;
-  const requestedBracketYear = params.bracketSeason ? parseInt(params.bracketSeason, 10) : undefined;
-  const activeBracketYear =
-    seasonYears.length > 0
-      ? seasonYears.includes(requestedBracketYear ?? -1)
-        ? (requestedBracketYear as number)
-        : seasonYears[0]
-      : null;
-  const bracket = activeBracketYear != null ? await getPlayoffBracket(activeBracketYear) : null;
 
   const { summary: h2h, games: h2hGames } = buildHeadToHead(teamScores, canonicalIds);
   const managers = Array.from(new Set(teamScores.map((r) => r.manager_name))).sort();
@@ -281,45 +215,6 @@ export default async function HistoryPage({
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="mb-12">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="font-display text-xl text-[var(--color-rust)] tracking-wide">Playoff Bracket</h2>
-          {seasonYears.length > 1 && (
-            <div className="flex gap-2 flex-wrap">
-              {seasonYears.map((year) => (
-                <Link
-                  key={year}
-                  href={`/history?bracketSeason=${year}`}
-                  className={`font-mono text-sm px-3 py-1.5 border rounded ${
-                    year === activeBracketYear
-                      ? "bg-[var(--color-gold)] text-[var(--color-ink)] border-[var(--color-gold)] font-bold"
-                      : "border-[rgba(32,32,15,0.3)] text-[rgba(32,32,15,0.65)] hover:border-[var(--color-gold)]"
-                  }`}
-                >
-                  {year}
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-        {!bracket || (bracket.winners.length === 0 && bracket.losers.length === 0) ? (
-          <p className="font-body opacity-60">No playoff games for {activeBracketYear ?? "this season"} yet.</p>
-        ) : (
-          <>
-            <div className="grid sm:grid-cols-2 gap-8">
-              <BracketColumn title="Championship Bracket" rounds={bracket.winners} />
-              <BracketColumn title="Consolation Bracket" rounds={bracket.losers} />
-            </div>
-            {bracket.unplaced.length > 0 && (
-              <p className="font-mono text-xs text-[rgba(32,32,15,0.4)] mt-6">
-                {bracket.unplaced.length} playoff game{bracket.unplaced.length === 1 ? "" : "s"} couldn&apos;t be
-                placed in a bracket (missing bracket data from the sync).
-              </p>
-            )}
-          </>
-        )}
       </section>
 
       <section className="mb-12">
