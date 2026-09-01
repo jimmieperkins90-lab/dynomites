@@ -115,8 +115,28 @@ export async function runSleeperSync(
   // reasonable default -- once this league's first playoffs happen, verify
   // the actual shape and adjust labels if they don't look right.
   const playoffWeekStart = league.settings?.playoff_week_start ?? null;
+  // Sleeper marks ANY placement/consolation game with a "p" field (3 => 3rd
+  // place, 5 => 5th place, etc.) -- crucially, a placement game can share
+  // the same round number as that week's "real" advancing games (e.g. a
+  // 5th-place game between the two Round-1 losers is often scheduled in the
+  // same round as the actual Semifinals). So `p` must be checked at every
+  // round, not just the final one, or a same-round placement game gets
+  // mislabeled as Semifinal alongside the real semifinal games.
+  function ordinalSuffix(n: number): string {
+    if (n % 100 >= 11 && n % 100 <= 13) return "th";
+    switch (n % 10) {
+      case 1:
+        return "st";
+      case 2:
+        return "nd";
+      case 3:
+        return "rd";
+      default:
+        return "th";
+    }
+  }
   const roundLabel = (r: number, maxR: number, p?: number) => {
-    if (p === 3) return "3rd Place";
+    if (p != null) return `${p}${ordinalSuffix(p)} Place`;
     if (r === maxR) return "Championship";
     if (r === maxR - 1) return "Semifinal";
     return `Round ${r}`;
