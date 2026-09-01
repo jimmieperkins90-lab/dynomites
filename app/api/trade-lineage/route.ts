@@ -17,13 +17,13 @@ export async function GET(req: NextRequest) {
   }
 
   if (kind === "draft_pick") {
-    const startTeamSeasonId = params.get("startTeamSeasonId");
+    const originalManagerId = params.get("originalManagerId");
     const season = Number(params.get("season"));
     const round = Number(params.get("round"));
-    if (!startTeamSeasonId || !season || !round) {
+    if (!originalManagerId || !season || !round) {
       return Response.json({ error: "missing params" }, { status: 400 });
     }
-    const hops = await getAssetLineage({ kind: "draft_pick", startTeamSeasonId, season, round });
+    const hops = await getAssetLineage({ kind: "draft_pick", originalManagerId, season, round });
     return Response.json({ hops });
   }
 
