@@ -422,7 +422,7 @@ export async function getCareerStats(): Promise<CareerStat[]> {
   const { data, error } = await supabase
     .from("career_stats")
     .select("*")
-    .order("total_wins", { ascending: false });
+    .order("total_wins", { ascending: false, nullsFirst: false });
   if (error || !data) return [];
   return data as CareerStat[];
 }
