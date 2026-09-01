@@ -126,17 +126,24 @@ function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[
   return (
     <div>
       <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
-      <div className="space-y-4">
-        {rounds.map(({ round, games }) => (
-          <div key={round}>
-            <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2">
-              {round}
-            </p>
-            <div className="space-y-2">
-              {games.map((g) => (
-                <BracketGameCard key={g.home_matchup_id} game={g} />
-              ))}
+      <div className="flex items-start gap-2 overflow-x-auto pb-2">
+        {rounds.map(({ round, games }, i) => (
+          <div key={round} className="flex items-start gap-2 shrink-0">
+            <div className="flex flex-col min-w-[168px]">
+              <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2 text-center">
+                {round}
+              </p>
+              <div className="flex flex-col justify-around gap-3 flex-1">
+                {games.map((g) => (
+                  <BracketGameCard key={g.home_matchup_id} game={g} />
+                ))}
+              </div>
             </div>
+            {i < rounds.length - 1 && (
+              <span className="font-mono text-[rgba(32,32,15,0.3)] pt-8 select-none" aria-hidden="true">
+                →
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -200,7 +207,7 @@ export default async function GamesPage({
           <p className="font-body opacity-60">No playoff games for {activeYear} yet.</p>
         ) : (
           <>
-            <div className="grid sm:grid-cols-2 gap-8">
+            <div className="space-y-10">
               <BracketColumn title="Championship Bracket" rounds={bracket.winners} />
               <BracketColumn title="Consolation Bracket" rounds={bracket.losers} />
             </div>
