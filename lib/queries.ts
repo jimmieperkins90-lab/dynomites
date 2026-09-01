@@ -372,17 +372,39 @@ export type Article = {
 };
 
 export async function getArticles(): Promise<Article[]> {
-  // TEMPORARY DIAGNOSTIC -- bypasses Supabase entirely to isolate where the
-  // "No articles published yet" bug actually is. Revert this once confirmed.
+  const supabase = getSupabase();
+  if (!supabase) {
+    return [
+      {
+        id: "diag",
+        title: "DIAGNOSTIC: getSupabase() returned null",
+        slug: "diagnostic-test",
+        author: "Debug",
+        published_at: "2026-01-01",
+        cover_image_url: null,
+        body: "SUPABASE_URL or SUPABASE_ANON_KEY is missing/empty in this environment.",
+      },
+    ];
+  }
+
+  // TEMPORARY DIAGNOSTIC -- makes the real call, but instead of silently
+  // swallowing an error (the normal `if (error || !data) return [];`),
+  // surfaces exactly what Supabase returned as visible page content. Revert
+  // once we've seen the real error.
+  const { data, error, status, statusText } = await supabase
+    .from("articles")
+    .select("id, title, slug, author, published_at, cover_image_url, body")
+    .order("published_at", { ascending: false });
+
   return [
     {
-      id: "test-diagnostic-0000",
-      title: "DIAGNOSTIC TEST ARTICLE",
+      id: "diag",
+      title: "DIAGNOSTIC RESULT",
       slug: "diagnostic-test",
       author: "Debug",
       published_at: "2026-01-01",
       cover_image_url: null,
-      body: "If you can see this on the live site, the deployment is current and the page renders fine -- the real bug is specifically in the Supabase call. If you still see 'No articles published yet' instead, this deploy isn't running the code we think it is.",
+      body: JSON.stringify({ status, statusText, error, rowCount: data?.length ?? null, data }, null, 2),
     },
   ];
 }
