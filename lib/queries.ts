@@ -409,9 +409,25 @@ export async function getFranchiseValuations(): Promise<FranchiseValuation[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("franchise_valuations")
-    .select("manager_id, value, note, updated_at, managers(display_name, real_name, avatar)")
+    .select("manager_id, value, note, updated_at")
     .order("value", { ascending: false });
   if (error || !data) return [];
+  if (data.length === 0) return [];
+
+  // Fetched as a separate lookup rather than an embedded
+  // `managers(...)` select -- PostgREST's automatic relationship
+  // embedding depends on its schema cache being current, which can lag
+  // behind recent migrations (this project has had many this session).
+  // A plain filtered select on manager IDs has no such dependency.
+  const managerIds = data.map((row: any) => row.manager_id);
+  const { data: managerRows } = await supabase
+    .from("managers")
+    .select("id, display_name, real_name, avatar")
+    .in("id", managerIds);
+  const managerById = new Map<string, any>();
+  for (const m of managerRows ?? []) {
+    managerById.set(m.id, m);
+  }
 
   // franchise_valuations doesn't store a team name itself, and a team's
   // name/logo can change year to year (e.g. "Louisville Morning Chubb"
@@ -437,15 +453,18 @@ export async function getFranchiseValuations(): Promise<FranchiseValuation[]> {
     }
   }
 
-  return data.map((row: any) => ({
-    manager_id: row.manager_id,
-    manager_name: row.managers?.real_name ?? row.managers?.display_name ?? "Unknown",
-    team_name: teamNameByManager.get(row.manager_id) ?? null,
-    avatar: row.managers?.avatar ?? null,
-    value: row.value,
-    note: row.note,
-    updated_at: row.updated_at,
-  }));
+  return data.map((row: any) => {
+    const mgr = managerById.get(row.manager_id);
+    return {
+      manager_id: row.manager_id,
+      manager_name: mgr?.real_name ?? mgr?.display_name ?? "Unknown",
+      team_name: teamNameByManager.get(row.manager_id) ?? null,
+      avatar: mgr?.avatar ?? null,
+      value: Number(row.value),
+      note: row.note,
+      updated_at: row.updated_at,
+    };
+  });
 }
 
 export function sortStarters(a: LineupRow, b: LineupRow) {
