@@ -412,6 +412,27 @@ export async function getArticles(): Promise<Article[]> {
 export async function getArticleBySlug(slug: string): Promise<Article | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
+
+  // TEMPORARY DIAGNOSTIC -- intercept the fake diagnostic slug so clicking
+  // through from the /articles listing shows the full, untruncated JSON
+  // result instead of a real (and therefore 404ing) DB lookup. Revert once
+  // we've seen the real error.
+  if (slug === "diagnostic-test") {
+    const { data, error, status, statusText } = await supabase
+      .from("articles")
+      .select("id, title, slug, author, published_at, cover_image_url, body")
+      .order("published_at", { ascending: false });
+    return {
+      id: "diag",
+      title: "DIAGNOSTIC RESULT (full)",
+      slug: "diagnostic-test",
+      author: "Debug",
+      published_at: "2026-01-01",
+      cover_image_url: null,
+      body: JSON.stringify({ status, statusText, error, rowCount: data?.length ?? null, data }, null, 2),
+    };
+  }
+
   const { data, error } = await supabase
     .from("articles")
     .select("id, title, slug, author, published_at, cover_image_url, body")
