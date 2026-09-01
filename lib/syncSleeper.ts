@@ -10,14 +10,34 @@ import {
   getWeekProjections,
   getLeagueDrafts,
   getDraftPicks,
+  getLeagueTransactions,
   type SleeperMatchup,
   type BracketMatch,
   type PlayerProjections,
   type SleeperDraft,
   type SleeperDraftPick,
+  type SleeperTransaction,
 } from "./sleeper";
 
 type Logger = (line: string) => void;
+
+// The site displays these two teams under their original names rather than
+// whatever Sleeper's team_name metadata currently says -- both were renamed
+// on Sleeper at some point (see the franchise valuations mapping from an
+// earlier session), and the site keeps the original name going forward.
+// Matched by content rather than an exact string, since a curly vs. straight
+// apostrophe (or a further rename on Sleeper's side) shouldn't silently
+// un-apply this.
+const TEAM_NAME_OVERRIDES: Array<{ match: (name: string) => boolean; replacement: string }> = [
+  { match: (n) => n.includes("Morning Chubb"), replacement: "Louisville Morning Chubb" },
+  { match: (n) => n === "Mud Dawgs", replacement: "Chicago Mud Dawgs" },
+];
+
+function applyTeamNameOverride(name: string | null): string | null {
+  if (!name) return name;
+  const hit = TEAM_NAME_OVERRIDES.find((o) => o.match(name));
+  return hit ? hit.replacement : name;
+}
 
 export async function runSleeperSync(
   opts: {
@@ -84,7 +104,8 @@ export async function runSleeperSync(
       log(`Roster ${r.roster_id} has no matching manager (owner_id=${r.owner_id}), skipping.`);
       continue;
     }
-    const teamName = users.find((u) => u.user_id === r.owner_id)?.metadata?.team_name ?? null;
+    const rawTeamName = users.find((u) => u.user_id === r.owner_id)?.metadata?.team_name ?? null;
+    const teamName = applyTeamNameOverride(rawTeamName);
 
     const { data: ts, error } = await db
       .from("team_seasons")
@@ -167,7 +188,14 @@ export async function runSleeperSync(
           if (tsId) await db.from("team_seasons").update({ final_rank: loserRank, made_playoffs: true }).eq("id", tsId);
         }
       }
-      if (phase === "winners_bracket") {
+      // IMPORTANT: only mark made_playoffs once a match has an actual
+      // decided winner (m.w != null). Sleeper pre-seeds the winners-bracket
+      // structure with t1/t2 roster slots filled in as soon as seeding is
+      // computed -- the same premature-placeholder behavior already guarded
+      // against on the read side in getPlayoffBracket()'s game_played
+      // filter -- so without this check, every team in the bracket gets
+      // flagged made_playoffs=true before a single playoff game is played.
+      if (phase === "winners_bracket" && m.w != null) {
         for (const rosterId of [m.t1, m.t2]) {
           if (rosterId != null) {
             const tsId = teamSeasonIdByRosterId.get(rosterId);
@@ -368,6 +396,77 @@ export async function runSleeperSync(
   if (playerRows.length) {
     const { error } = await db.from("players_cache").upsert(playerRows, { onConflict: "sleeper_player_id" });
     if (error) throw error;
+  }
+
+  // ---- trades -------------------------------------------------------------
+  // Sleeper's transactions endpoint is keyed by week ("leg"), not a single
+  // "give me everything" call, so this loops across the season's weeks on
+  // its own, independently of the matchups loop above -- a week's
+  // transactions can exist even in a week matchups scoring hasn't picked up
+  // yet (e.g. preseason/offseason trades under leg 1), so this shouldn't
+  // stop early the way the matchups loop does. Only type === "trade" &&
+  // status === "complete" entries are kept -- waivers and free-agent
+  // adds/drops are ignored here.
+  for (let week = 1; week <= 18; week++) {
+    let transactions: SleeperTransaction[];
+    try {
+      transactions = await getLeagueTransactions(leagueId, week);
+    } catch (e) {
+      log(`Week ${week}: transactions fetch failed, skipping. ${e}`);
+      continue;
+    }
+
+    const trades = transactions.filter((t) => t.type === "trade" && t.status === "complete");
+    for (const trade of trades) {
+      const { data: tradeRow, error: tradeErr } = await db
+        .from("trades")
+        .upsert(
+          {
+            season_id: season.id,
+            sleeper_transaction_id: trade.transaction_id,
+            week,
+            status_updated: new Date(trade.status_updated).toISOString(),
+          },
+          { onConflict: "sleeper_transaction_id" }
+        )
+        .select()
+        .single();
+      if (tradeErr) throw tradeErr;
+
+      const itemRows: any[] = [];
+      // `adds` maps player_id -> the roster_id that RECEIVED the player in
+      // this trade -- exactly what "who got what" needs, no need to also
+      // walk `drops` since every traded player already appears here once
+      // per side.
+      for (const [playerId, rosterId] of Object.entries(trade.adds ?? {})) {
+        const info = playerMap[playerId];
+        itemRows.push({
+          trade_id: tradeRow.id,
+          team_season_id: teamSeasonIdByRosterId.get(rosterId) ?? null,
+          item_type: "player",
+          sleeper_player_id: playerId,
+          player_name: info?.full_name ?? null,
+          position: info?.position ?? null,
+        });
+      }
+      for (const pick of trade.draft_picks ?? []) {
+        itemRows.push({
+          trade_id: tradeRow.id,
+          team_season_id: teamSeasonIdByRosterId.get(pick.owner_id) ?? null,
+          item_type: "draft_pick",
+          traded_pick_season: Number(pick.season),
+          traded_pick_round: pick.round,
+        });
+      }
+
+      await db.from("trade_items").delete().eq("trade_id", tradeRow.id);
+      if (itemRows.length) {
+        const { error: itemErr } = await db.from("trade_items").insert(itemRows);
+        if (itemErr) throw itemErr;
+      }
+    }
+
+    if (trades.length) log(`Week ${week}: synced ${trades.length} trade(s).`);
   }
 
   log("Sync complete.");
