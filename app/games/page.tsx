@@ -114,6 +114,28 @@ function BracketGameCard({ game }: { game: GameResult }) {
   );
 }
 
+function groupRoundsByWeek(rounds: PlayoffRound[]): { week: number; groups: PlayoffRound[] }[] {
+  const byWeek = new Map<number, PlayoffRound[]>();
+  for (const r of rounds) {
+    const week = r.games[0]?.week ?? 0;
+    (byWeek.get(week) ?? byWeek.set(week, []).get(week)!).push(r);
+  }
+  return Array.from(byWeek.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([week, groups]) => ({
+      week,
+      // Within a shared week/column, the main advancing game (Semifinal,
+      // Championship, ...) is listed above the placement game that happens
+      // to share that same round (5th Place, 3rd Place, ...).
+      groups: [...groups].sort((a, b) => {
+        const aPlacement = /place/i.test(a.round);
+        const bPlacement = /place/i.test(b.round);
+        if (aPlacement !== bPlacement) return aPlacement ? 1 : -1;
+        return a.round.localeCompare(b.round);
+      }),
+    }));
+}
+
 function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[] }) {
   if (rounds.length === 0) {
     return (
@@ -123,23 +145,28 @@ function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[
       </div>
     );
   }
+  const weekColumns = groupRoundsByWeek(rounds);
   return (
     <div>
       <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
       <div className="flex items-start gap-2 overflow-x-auto pb-2">
-        {rounds.map(({ round, games }, i) => (
-          <div key={round} className="flex items-start gap-2 shrink-0">
-            <div className="flex flex-col min-w-[168px]">
-              <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2 text-center">
-                {round}
-              </p>
-              <div className="flex flex-col justify-around gap-3 flex-1">
-                {games.map((g) => (
-                  <BracketGameCard key={g.home_matchup_id} game={g} />
-                ))}
-              </div>
+        {weekColumns.map(({ week, groups }, i) => (
+          <div key={week} className="flex items-start gap-2 shrink-0">
+            <div className="flex flex-col min-w-[168px] gap-5">
+              {groups.map((g) => (
+                <div key={g.round}>
+                  <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2 text-center">
+                    {g.round}
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {g.games.map((game) => (
+                      <BracketGameCard key={game.home_matchup_id} game={game} />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-            {i < rounds.length - 1 && (
+            {i < weekColumns.length - 1 && (
               <span className="font-mono text-[rgba(32,32,15,0.3)] pt-8 select-none" aria-hidden="true">
                 →
               </span>
