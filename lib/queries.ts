@@ -397,6 +397,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
 export type FranchiseValuation = {
   manager_id: string;
   manager_name: string;
+  team_name: string | null;
   avatar: string | null;
   value: number;
   note: string | null;
@@ -411,9 +412,35 @@ export async function getFranchiseValuations(): Promise<FranchiseValuation[]> {
     .select("manager_id, value, note, updated_at, managers(display_name, real_name, avatar)")
     .order("value", { ascending: false });
   if (error || !data) return [];
+
+  // franchise_valuations doesn't store a team name itself, and a team's
+  // name/logo can change year to year (e.g. "Louisville Morning Chubb"
+  // becoming "JB's Morning Chubb") -- so "current" team name is defined as
+  // whatever the manager's team was called in the most recent season.
+  const years = await getSeasonYears();
+  const latestYear = years[0];
+  const teamNameByManager = new Map<string, string>();
+  if (latestYear != null) {
+    const { data: seasonRow } = await supabase
+      .from("seasons")
+      .select("id")
+      .eq("year", latestYear)
+      .maybeSingle();
+    if (seasonRow) {
+      const { data: teamRows } = await supabase
+        .from("team_seasons")
+        .select("manager_id, team_name")
+        .eq("season_id", seasonRow.id);
+      for (const row of (teamRows ?? []) as { manager_id: string; team_name: string | null }[]) {
+        if (row.team_name) teamNameByManager.set(row.manager_id, row.team_name);
+      }
+    }
+  }
+
   return data.map((row: any) => ({
     manager_id: row.manager_id,
     manager_name: row.managers?.real_name ?? row.managers?.display_name ?? "Unknown",
+    team_name: teamNameByManager.get(row.manager_id) ?? null,
     avatar: row.managers?.avatar ?? null,
     value: row.value,
     note: row.note,
