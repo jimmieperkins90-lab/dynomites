@@ -891,3 +891,202 @@ export async function getDraftHistory(): Promise<DraftPick[]> {
   if (error || !data) return [];
   return data as DraftPick[];
 }
+
+export type TradeItem = {
+  team_season_id: string | null;
+  team_name: string | null;
+  manager_name: string | null;
+  item_type: "player" | "draft_pick";
+  player_name: string | null;
+  position: string | null;
+  traded_pick_season: number | null;
+  traded_pick_round: number | null;
+};
+
+export type Trade = {
+  trade_id: string;
+  season_year: number;
+  week: number;
+  status_updated: string;
+  items: TradeItem[];
+};
+
+// Every trade ever synced, most recent first, reconstructed from
+// trades_view (one row per traded item -- grouped back into one Trade per
+// trade_id here). Populated by the trade-sync block in syncSleeper.ts --
+// empty until that has run at least once.
+export async function getRecentTrades(limit = 10): Promise<Trade[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  // Fetch more raw rows than `limit` trades, since each trade spans several
+  // item rows -- 20x is generous headroom for typical 2-for-2 style trades.
+  const { data, error } = await supabase
+    .from("trades_view")
+    .select("*")
+    .order("status_updated", { ascending: false })
+    .limit(limit * 20);
+  if (error || !data) return [];
+
+  const byTrade = new Map<string, Trade>();
+  for (const row of data as any[]) {
+    if (!byTrade.has(row.trade_id)) {
+      byTrade.set(row.trade_id, {
+        trade_id: row.trade_id,
+        season_year: row.season_year,
+        week: row.week,
+        status_updated: row.status_updated,
+        items: [],
+      });
+    }
+    byTrade.get(row.trade_id)!.items.push({
+      team_season_id: row.team_season_id,
+      team_name: row.team_name,
+      manager_name: row.manager_name,
+      item_type: row.item_type,
+      player_name: row.player_name,
+      position: row.position,
+      traded_pick_season: row.traded_pick_season,
+      traded_pick_round: row.traded_pick_round,
+    });
+  }
+
+  return Array.from(byTrade.values())
+    .sort((a, b) => new Date(b.status_updated).getTime() - new Date(a.status_updated).getTime())
+    .slice(0, limit);
+}
+
+function formatTradeLine(trade: Trade): string {
+  const byTeam = new Map<string, TradeItem[]>();
+  for (const item of trade.items) {
+    const key = item.team_name ?? item.manager_name ?? "Unknown team";
+    (byTeam.get(key) ?? byTeam.set(key, []).get(key)!).push(item);
+  }
+  const sides = Array.from(byTeam.entries()).map(([team, items]) => {
+    const names = items.map((i) =>
+      i.item_type === "player"
+        ? i.player_name ?? "a player"
+        : `a ${i.traded_pick_season ?? ""} Round ${i.traded_pick_round ?? "?"} pick`
+    );
+    return `${team} get ${names.join(", ")}`;
+  });
+  return `Trade: ${sides.join(" · ")} (Week ${trade.week})`;
+}
+
+export type TickerItem = {
+  id: string;
+  text: string;
+  href: string | null;
+};
+
+function formatGameLine(g: GameResult): string {
+  const home = g.home_team_name ?? g.home_manager_name;
+  const away = g.away_team_name ?? g.away_manager_name ?? "Unknown";
+  const homePts = g.home_points ?? 0;
+  const awayPts = g.away_points ?? 0;
+  const winner = homePts >= awayPts ? home : away;
+  const loser = winner === home ? away : home;
+  const winnerPts = winner === home ? homePts : awayPts;
+  const loserPts = winner === home ? awayPts : homePts;
+  return `${winner} topped ${loser} ${winnerPts.toFixed(1)}–${loserPts.toFixed(1)} (Week ${g.week})`;
+}
+
+// Builds the homepage ticker's items: most recent completed week's results,
+// season-so-far records (high score, biggest margin), currently-clinched
+// playoff teams, a short power ranking from the same projected-win-totals
+// model already used on Betting, and the most recent trades. Everything
+// here reuses data already proven reliable elsewhere in the app -- no new
+// tables except trades, which is empty (and simply produces no ticker
+// items) until its sync has run.
+//
+// Note on clinches: this reports teams CURRENTLY flagged made_playoffs, not
+// the moment a team clinched -- the sync doesn't snapshot standings history,
+// so a "just clinched" event can't be detected yet.
+export async function getTickerItems(): Promise<TickerItem[]> {
+  const years = await getSeasonYears();
+  const currentYear = years[0];
+  if (currentYear == null) return [];
+
+  const [games, standings, trades, projected] = await Promise.all([
+    getGamesForSeason(currentYear),
+    getStandingsForSeason(currentYear),
+    getRecentTrades(5),
+    getProjectedWinTotals(currentYear),
+  ]);
+
+  const played = games.filter((g) => g.game_played && g.away_team_season_id);
+  const items: TickerItem[] = [];
+
+  if (played.length > 0) {
+    const latestWeek = Math.max(...played.map((g) => g.week));
+    const weekGames = played.filter((g) => g.week === latestWeek);
+    for (const g of weekGames) {
+      items.push({
+        id: `game-${g.home_matchup_id}`,
+        text: formatGameLine(g),
+        href: `/games/${g.home_matchup_id}`,
+      });
+    }
+
+    let highScoreGame = played[0];
+    let highScoreVal = -1;
+    let blowoutGame = played[0];
+    let blowoutMargin = -1;
+    for (const g of played) {
+      const home = g.home_points ?? 0;
+      const away = g.away_points ?? 0;
+      if (home > highScoreVal) {
+        highScoreVal = home;
+        highScoreGame = g;
+      }
+      if (away > highScoreVal) {
+        highScoreVal = away;
+        highScoreGame = g;
+      }
+      const margin = Math.abs(home - away);
+      if (margin > blowoutMargin) {
+        blowoutMargin = margin;
+        blowoutGame = g;
+      }
+    }
+    items.push({
+      id: `record-high-${highScoreGame.home_matchup_id}`,
+      text: `Season high: ${highScoreVal.toFixed(1)} points in Week ${highScoreGame.week}`,
+      href: `/games/${highScoreGame.home_matchup_id}`,
+    });
+    items.push({
+      id: `record-blowout-${blowoutGame.home_matchup_id}`,
+      text: `Biggest margin so far: ${blowoutMargin.toFixed(1)} points in Week ${blowoutGame.week}`,
+      href: `/games/${blowoutGame.home_matchup_id}`,
+    });
+  }
+
+  const clinched = standings.filter((s) => s.made_playoffs);
+  for (const team of clinched) {
+    items.push({
+      id: `clinch-${team.team_season_id}`,
+      text: `${team.team_name ?? team.manager_name} has clinched a playoff spot`,
+      href: `/standings`,
+    });
+  }
+
+  const topRanked = [...projected]
+    .sort((a, b) => b.projected_final_wins - a.projected_final_wins)
+    .slice(0, 3);
+  topRanked.forEach((team, i) => {
+    items.push({
+      id: `rank-${team.team_season_id}`,
+      text: `#${i + 1} power ranking: ${team.team_name ?? team.manager_name} (${team.projected_final_wins.toFixed(1)} proj. wins)`,
+      href: `/betting`,
+    });
+  });
+
+  for (const trade of trades) {
+    items.push({
+      id: `trade-${trade.trade_id}`,
+      text: formatTradeLine(trade),
+      href: null,
+    });
+  }
+
+  return items;
+}
