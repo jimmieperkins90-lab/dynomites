@@ -10,6 +10,10 @@ function formatDate(dateStr: string) {
   });
 }
 
+function formatValue(n: number) {
+  return `$${n.toFixed(2)}`;
+}
+
 export default async function ValuationsPage() {
   const valuations = await getFranchiseValuations();
 
@@ -20,9 +24,9 @@ export default async function ValuationsPage() {
       <div className="panel p-5 mb-8">
         <p className="font-body text-sm text-[rgba(32,32,15,0.8)]">
           Each franchise is valued on a mix of Success &amp; History, Brand Power, Roster
-          Strength, Ownership, and Peer/Expert Rankings. Values are a snapshot, not a fixed
-          price — expect them to move as rosters, records, and reputations change season to
-          season.
+          Strength, Ownership, Peer/Expert Rankings, and future earnings potential. Values are a
+          snapshot, not a fixed price — expect them to move as rosters, records, and reputations
+          change season to season.
         </p>
       </div>
 
@@ -44,14 +48,14 @@ export default async function ValuationsPage() {
                 <tr key={v.manager_id} className="border-t border-[rgba(32,32,15,0.12)]">
                   <td className="px-4 py-2.5 font-mono text-[rgba(32,32,15,0.55)]">{i + 1}</td>
                   <td className="px-4 py-2.5">
-                    <p className="font-body">{v.team_name ?? v.manager_name}</p>
-                    <p className="font-mono text-xs text-[rgba(32,32,15,0.5)]">{v.manager_name}</p>
+                    <p className="font-body text-lg font-bold">{v.team_name ?? v.manager_name}</p>
+                    <p className="font-mono text-sm text-[rgba(32,32,15,0.55)]">{v.manager_name}</p>
                     {v.note && (
                       <p className="font-mono text-xs text-[rgba(32,32,15,0.4)] mt-1">{v.note}</p>
                     )}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-right text-[var(--color-gold)] font-bold">
-                    ${v.value.toLocaleString()}
+                    {formatValue(v.value)}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.4)] text-xs">
                     {formatDate(v.updated_at)}
