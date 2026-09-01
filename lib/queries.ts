@@ -902,6 +902,8 @@ export type TradeItem = {
   position: string | null;
   traded_pick_season: number | null;
   traded_pick_round: number | null;
+  original_manager_id: string | null;
+  original_manager_name: string | null;
   previous_team_season_id: string | null;
   previous_team_name: string | null;
 };
@@ -953,6 +955,8 @@ export async function getAllTrades(): Promise<Trade[]> {
       position: row.position,
       traded_pick_season: row.traded_pick_season,
       traded_pick_round: row.traded_pick_round,
+      original_manager_id: row.original_manager_id,
+      original_manager_name: row.original_manager_name,
       previous_team_season_id: row.previous_team_season_id,
       previous_team_name: row.previous_team_name,
     });
@@ -1159,19 +1163,25 @@ async function getPlayerTradeHops(
   }));
 }
 
-// Walks a traded draft pick's full life: every subsequent trade of that
-// same pick (chained by previous_team_season_id -> team_season_id hops,
-// since a pick can be flipped more than once before the draft), then --
-// once the chain of trades ends -- checks whether that pick has actually
-// been used in a draft yet, and if so continues into that player's own
-// future trade history via getPlayerTradeHops.
+// Walks a traded draft pick's full life. Keyed off (season, round,
+// originalManagerId) rather than the current/previous team hop-matching
+// this used before -- a team can hold several picks of the same round in
+// the same season (e.g. from acquiring more than one team's future
+// 1st-rounder), which made season+round+current-holder ambiguous. The
+// original owner's manager identity is stable across years even for a
+// future pick whose season hasn't happened yet (so no team_seasons row
+// exists for it), which a season-specific id can't be. Once scoped this
+// way, every row IS the same specific pick, so listing them in date order
+// directly reconstructs the chain -- no hop-matching required.
 //
-// KNOWN LIMITATION: a team holding two picks in the same round in the same
-// season (e.g. from trading for a second team's 3rd-rounder) can't always
-// be disambiguated, since Sleeper doesn't tag a traded future pick with a
-// specific slot number until that season's draft order is actually set.
-export async function getPickLineage(
-  startTeamSeasonId: string,
+// KNOWN LIMITATION: once the pick is actually drafted, matching it to the
+// resulting draft_picks row still falls back to season+round+final-holder,
+// which can't disambiguate if that holder drafted with MULTIPLE picks of
+// the same round (only possible once several distinct original picks have
+// converged on one team) -- doing better here needs Sleeper's original-
+// slot draft order data, not yet tracked.
+async function getPickLineage(
+  originalManagerId: string,
   season: number,
   round: number
 ): Promise<LineageHop[]> {
@@ -1184,34 +1194,29 @@ export async function getPickLineage(
     .eq("item_type", "draft_pick")
     .eq("traded_pick_season", season)
     .eq("traded_pick_round", round)
+    .eq("original_manager_id", originalManagerId)
     .order("status_updated", { ascending: true });
   if (error || !data) return [];
 
   const rows = data as any[];
-  const hops: LineageHop[] = [];
-  let currentTeamSeasonId: string | null = startTeamSeasonId;
+  const hops: LineageHop[] = rows.map((row) => ({
+    kind: "trade",
+    date: row.status_updated,
+    week: row.week,
+    from_team: row.previous_team_name,
+    to_team: row.team_name,
+    asset_label: `${season} Round ${round} pick`,
+  }));
 
-  let guard = 0;
-  while (guard++ < 20) {
-    const next = rows.find((r) => r.previous_team_season_id === currentTeamSeasonId);
-    if (!next) break;
-    hops.push({
-      kind: "trade",
-      date: next.status_updated,
-      week: next.week,
-      from_team: next.previous_team_name,
-      to_team: next.team_name,
-      asset_label: `${season} Round ${round} pick`,
-    });
-    currentTeamSeasonId = next.team_season_id;
-  }
+  const finalHolderTeamSeasonId = rows.length > 0 ? rows[rows.length - 1].team_season_id : null;
+  if (!finalHolderTeamSeasonId) return hops;
 
   const { data: draftPickRow } = await supabase
     .from("draft_picks_view")
     .select("*")
     .eq("season_year", season)
     .eq("round", round)
-    .eq("team_season_id", currentTeamSeasonId as string)
+    .eq("team_season_id", finalHolderTeamSeasonId as string)
     .maybeSingle();
 
   if (draftPickRow) {
@@ -1239,10 +1244,10 @@ export async function getPickLineage(
 export async function getAssetLineage(
   input:
     | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null }
-    | { kind: "draft_pick"; startTeamSeasonId: string; season: number; round: number }
+    | { kind: "draft_pick"; originalManagerId: string; season: number; round: number }
 ): Promise<LineageHop[]> {
   if (input.kind === "player") {
     return getPlayerTradeHops(input.sleeperPlayerId, input.playerName);
   }
-  return getPickLineage(input.startTeamSeasonId, input.season, input.round);
+  return getPickLineage(input.originalManagerId, input.season, input.round);
 }
