@@ -262,6 +262,42 @@ export type PlayoffBracket = {
   unplaced: GameResult[]; // is_playoff=true but phase wasn't set (sync data-quality gap)
 };
 
+function ordinalSuffix(n: number): string {
+  if (n % 100 >= 11 && n % 100 <= 13) return "th";
+  switch (n % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+// The consolation (losers) bracket's own round labels are relative to ITS
+// bracket only -- its "Championship" decides 1st place *within the losers
+// bracket*, which is really (winnersBracketSize + 1)th place league-wide,
+// not 1st. Once we know how many teams were in the winners bracket (the
+// offset), translate the losers bracket's placement-deciding rounds
+// (Championship, 3rd Place, 5th Place, ...) into real standings (7th, 9th,
+// 11th, ...). Round 1/Semifinal are left alone since they're just bracket
+// progress, not a placement decision themselves.
+function relabelForAbsolutePlacement(round: string, offset: number): string {
+  if (offset <= 0) return round;
+  if (round === "Championship") {
+    const place = offset + 1;
+    return `${place}${ordinalSuffix(place)} Place`;
+  }
+  const match = round.match(/^(\d+)(?:st|nd|rd|th) Place$/);
+  if (match) {
+    const place = offset + Number(match[1]);
+    return `${place}${ordinalSuffix(place)} Place`;
+  }
+  return round;
+}
+
 // Builds the playoff bracket for a season from game_results, grouping by
 // phase (winners_bracket = championship bracket, losers_bracket =
 // consolation bracket). Columns are ordered by the week they were actually
@@ -284,6 +320,12 @@ export async function getPlayoffBracket(year: number): Promise<PlayoffBracket> {
   const games = await getGamesForSeason(year);
   const playoffGames = games.filter((g) => g.is_playoff && g.away_team_season_id && g.game_played);
 
+  const winnersTeamCount = new Set(
+    playoffGames
+      .filter((g) => g.phase === "winners_bracket")
+      .flatMap((g) => [g.home_team_season_id, g.away_team_season_id])
+  ).size;
+
   function bucket(phase: "winners_bracket" | "losers_bracket"): PlayoffRound[] {
     const byRound = new Map<string, GameResult[]>();
     for (const g of playoffGames) {
@@ -303,7 +345,11 @@ export async function getPlayoffBracket(year: number): Promise<PlayoffBracket> {
       if (aPlacement !== bPlacement) return aPlacement ? 1 : -1;
       return a.round.localeCompare(b.round);
     });
-    return groups.map(({ round, games: roundGames }) => ({ round, games: roundGames }));
+    const offset = phase === "losers_bracket" ? winnersTeamCount : 0;
+    return groups.map(({ round, games: roundGames }) => ({
+      round: relabelForAbsolutePlacement(round, offset),
+      games: roundGames,
+    }));
   }
 
   const unplaced = playoffGames.filter((g) => g.phase !== "winners_bracket" && g.phase !== "losers_bracket");
