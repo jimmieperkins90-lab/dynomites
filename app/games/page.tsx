@@ -150,29 +150,41 @@ function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[
     <div>
       <h3 className="font-display text-lg text-[var(--color-rust)] mb-3 tracking-wide">{title}</h3>
       <div className="flex items-start gap-2 overflow-x-auto pb-2">
-        {weekColumns.map(({ week, groups }, i) => (
-          <div key={week} className="flex items-start gap-2 shrink-0">
-            <div className="flex flex-col min-w-[168px] gap-5">
-              {groups.map((g) => (
-                <div key={g.round}>
-                  <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2 text-center">
-                    {g.round}
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {g.games.map((game) => (
-                      <BracketGameCard key={game.home_matchup_id} game={game} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+        {weekColumns.map(({ week, groups }, i) => {
+          const roundNumber = i + 1;
+          return (
+            <div key={week} className="flex items-start gap-2 shrink-0">
+              <div className="flex flex-col min-w-[168px] gap-5">
+                {groups.map((g) => {
+                  // The main advancing game in this column gets sequential
+                  // "Round N" numbering. A placement game sharing the same
+                  // column (5th Place, 9th Place, etc.) keeps its own
+                  // distinct label instead -- otherwise two different games
+                  // in the same column would both just say "Round 2".
+                  const isPlacement = /place/i.test(g.round);
+                  const label = isPlacement ? g.round : `Round ${roundNumber}`;
+                  return (
+                    <div key={g.round}>
+                      <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase tracking-widest mb-2 text-center">
+                        {label}
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        {g.games.map((game) => (
+                          <BracketGameCard key={game.home_matchup_id} game={game} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {i < weekColumns.length - 1 && (
+                <span className="font-mono text-[rgba(32,32,15,0.3)] pt-8 select-none" aria-hidden="true">
+                  →
+                </span>
+              )}
             </div>
-            {i < weekColumns.length - 1 && (
-              <span className="font-mono text-[rgba(32,32,15,0.3)] pt-8 select-none" aria-hidden="true">
-                →
-              </span>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
