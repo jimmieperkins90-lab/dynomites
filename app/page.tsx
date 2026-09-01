@@ -3,8 +3,10 @@ import {
   getSeasonYears,
   getChampion,
   getDivisionChampions,
+  getTickerItems,
   type StandingsRow,
 } from "@/lib/queries";
+import NewsTicker from "@/components/NewsTicker";
 
 export const dynamic = "force-dynamic";
 
@@ -143,15 +145,18 @@ export default async function LandingPage() {
     );
   }
 
-  const seasons = await Promise.all(
-    years.map(async (year) => {
-      const [champion, divisionChamps] = await Promise.all([
-        getChampion(year),
-        getDivisionChampions(year),
-      ]);
-      return { year, champion, divisionChamps };
-    })
-  );
+  const [seasons, tickerItems] = await Promise.all([
+    Promise.all(
+      years.map(async (year) => {
+        const [champion, divisionChamps] = await Promise.all([
+          getChampion(year),
+          getDivisionChampions(year),
+        ]);
+        return { year, champion, divisionChamps };
+      })
+    ),
+    getTickerItems(),
+  ]);
 
   const champions = seasons
     .filter(
@@ -169,9 +174,11 @@ export default async function LandingPage() {
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
       <h1 className="outline font-display text-5xl tracking-wide text-center mb-2">Dyno Mites</h1>
-      <p className="font-body font-semibold text-center opacity-70 mb-2">
+      <p className="font-body font-semibold text-center opacity-70 mb-6">
         League standings, matchup history, and every champion since kickoff.
       </p>
+
+      <NewsTicker items={tickerItems} />
 
       <ChampionsRafter champions={champions} />
       <DivisionChampionsRafter entries={divisionEntries} />
