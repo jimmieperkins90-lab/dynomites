@@ -1060,7 +1060,10 @@ export async function getTickerItems(): Promise<TickerItem[]> {
     });
   }
 
-  const clinched = standings.filter((s) => s.made_playoffs);
+  // Gated behind played.length > 0 -- with zero games played this season,
+  // any made_playoffs=true would necessarily be stale/incorrect carryover,
+  // so don't surface it even if it somehow occurs.
+  const clinched = played.length > 0 ? standings.filter((s) => s.made_playoffs) : [];
   for (const team of clinched) {
     items.push({
       id: `clinch-${team.team_season_id}`,
