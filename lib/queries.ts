@@ -251,11 +251,6 @@ export async function getDivisionTitleCountsByManager(): Promise<Record<string, 
   return counts;
 }
 
-// Order playoff rounds should appear in within a bracket. Any round label
-// that doesn't match one of these (unexpected Sleeper bracket shape) is
-// appended after, alphabetically, rather than dropped.
-const PLAYOFF_ROUND_ORDER = ["Round 1", "Semifinal", "Championship", "3rd Place"];
-
 export type PlayoffRound = {
   round: string;
   games: GameResult[];
@@ -269,12 +264,25 @@ export type PlayoffBracket = {
 
 // Builds the playoff bracket for a season from game_results, grouping by
 // phase (winners_bracket = championship bracket, losers_bracket =
-// consolation bracket) and ordering rounds the way they were actually
-// played. home_matchup_id doubles as the canonical id here already, so no
-// separate id-translation step is needed for the /games/[id] links.
+// consolation bracket). Columns are ordered by the week they were actually
+// played (earliest first), with placement games (round_game containing
+// "Place") sorted after the main advancing game of that same week -- e.g.
+// the real Semifinals before a same-week 5th Place game. This intentionally
+// does NOT rely on a hardcoded round-name list, since a bracket can produce
+// round labels beyond the basic Round 1/Semifinal/Championship/3rd Place set
+// (5th Place, 7th Place, etc. on larger brackets) and week-order sorting
+// handles any of them correctly without special-casing each one.
+// home_matchup_id doubles as the canonical id here already, so no separate
+// id-translation step is needed for the /games/[id] links.
+//
+// Only games that have actually been played are included -- Sleeper
+// generates the full bracket's pairings (0-0, unplayed) as soon as seeding
+// is set, often well before the games are actually played, so without this
+// filter an in-progress or not-yet-started playoff bracket would show empty
+// placeholder games.
 export async function getPlayoffBracket(year: number): Promise<PlayoffBracket> {
   const games = await getGamesForSeason(year);
-  const playoffGames = games.filter((g) => g.is_playoff && g.away_team_season_id);
+  const playoffGames = games.filter((g) => g.is_playoff && g.away_team_season_id && g.game_played);
 
   function bucket(phase: "winners_bracket" | "losers_bracket"): PlayoffRound[] {
     const byRound = new Map<string, GameResult[]>();
@@ -283,15 +291,19 @@ export async function getPlayoffBracket(year: number): Promise<PlayoffBracket> {
       const round = g.round_game ?? "Playoff";
       (byRound.get(round) ?? byRound.set(round, []).get(round)!).push(g);
     }
-    const known = PLAYOFF_ROUND_ORDER.filter((r) => byRound.has(r)).map((round) => ({
+    const groups = Array.from(byRound.entries()).map(([round, roundGames]) => ({
       round,
-      games: byRound.get(round)!,
+      games: roundGames,
+      minWeek: Math.min(...roundGames.map((g) => g.week)),
     }));
-    const extra = Array.from(byRound.entries())
-      .filter(([round]) => !PLAYOFF_ROUND_ORDER.includes(round))
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([round, roundGames]) => ({ round, games: roundGames }));
-    return [...known, ...extra];
+    groups.sort((a, b) => {
+      if (a.minWeek !== b.minWeek) return a.minWeek - b.minWeek;
+      const aPlacement = /place/i.test(a.round);
+      const bPlacement = /place/i.test(b.round);
+      if (aPlacement !== bPlacement) return aPlacement ? 1 : -1;
+      return a.round.localeCompare(b.round);
+    });
+    return groups.map(({ round, games: roundGames }) => ({ round, games: roundGames }));
   }
 
   const unplaced = playoffGames.filter((g) => g.phase !== "winners_bracket" && g.phase !== "losers_bracket");
