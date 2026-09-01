@@ -5,7 +5,7 @@ import type { LineageHop } from "@/lib/queries";
 
 type Props =
   | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null; label: string }
-  | { kind: "draft_pick"; startTeamSeasonId: string; season: number; round: number; label: string };
+  | { kind: "draft_pick"; originalManagerId: string; season: number; round: number; label: string };
 
 export default function TradeLineageButton(props: Props) {
   const [open, setOpen] = useState(false);
@@ -30,7 +30,7 @@ export default function TradeLineageButton(props: Props) {
         if (props.sleeperPlayerId) params.set("sleeperPlayerId", props.sleeperPlayerId);
         if (props.playerName) params.set("playerName", props.playerName);
       } else {
-        params.set("startTeamSeasonId", props.startTeamSeasonId);
+        params.set("originalManagerId", props.originalManagerId);
         params.set("season", String(props.season));
         params.set("round", String(props.round));
       }
