@@ -897,10 +897,13 @@ export type TradeItem = {
   team_name: string | null;
   manager_name: string | null;
   item_type: "player" | "draft_pick";
+  sleeper_player_id: string | null;
   player_name: string | null;
   position: string | null;
   traded_pick_season: number | null;
   traded_pick_round: number | null;
+  previous_team_season_id: string | null;
+  previous_team_name: string | null;
 };
 
 export type Trade = {
@@ -913,18 +916,20 @@ export type Trade = {
 
 // Every trade ever synced, most recent first, reconstructed from
 // trades_view (one row per traded item -- grouped back into one Trade per
-// trade_id here). Populated by the trade-sync block in syncSleeper.ts --
-// empty until that has run at least once.
-export async function getRecentTrades(limit = 10): Promise<Trade[]> {
+// trade_id here). Populated by the trade-sync block in syncSleeper.ts, plus
+// a handful of 2025-season trades imported directly from a manually-kept
+// CSV (the sync's automatic backfill for the pre-2026 league was never
+// wired up -- see the draft-history backfill note for the same unresolved
+// gap). League trade volume is small enough that fetching everything and
+// grouping in JS is simpler than paginating.
+export async function getAllTrades(): Promise<Trade[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
-  // Fetch more raw rows than `limit` trades, since each trade spans several
-  // item rows -- 20x is generous headroom for typical 2-for-2 style trades.
   const { data, error } = await supabase
     .from("trades_view")
     .select("*")
     .order("status_updated", { ascending: false })
-    .limit(limit * 20);
+    .limit(2000);
   if (error || !data) return [];
 
   const byTrade = new Map<string, Trade>();
@@ -943,16 +948,24 @@ export async function getRecentTrades(limit = 10): Promise<Trade[]> {
       team_name: row.team_name,
       manager_name: row.manager_name,
       item_type: row.item_type,
+      sleeper_player_id: row.sleeper_player_id,
       player_name: row.player_name,
       position: row.position,
       traded_pick_season: row.traded_pick_season,
       traded_pick_round: row.traded_pick_round,
+      previous_team_season_id: row.previous_team_season_id,
+      previous_team_name: row.previous_team_name,
     });
   }
 
-  return Array.from(byTrade.values())
-    .sort((a, b) => new Date(b.status_updated).getTime() - new Date(a.status_updated).getTime())
-    .slice(0, limit);
+  return Array.from(byTrade.values()).sort(
+    (a, b) => new Date(b.status_updated).getTime() - new Date(a.status_updated).getTime()
+  );
+}
+
+export async function getRecentTrades(limit = 10): Promise<Trade[]> {
+  const all = await getAllTrades();
+  return all.slice(0, limit);
 }
 
 function formatTradeLine(trade: Trade): string {
@@ -1092,4 +1105,144 @@ export async function getTickerItems(): Promise<TickerItem[]> {
   }
 
   return items;
+}
+
+export type LineageHop =
+  | {
+      kind: "trade";
+      date: string;
+      week: number;
+      from_team: string | null;
+      to_team: string | null;
+      asset_label: string;
+    }
+  | {
+      kind: "drafted";
+      season_year: number;
+      round: number;
+      pick_no: number;
+      team_name: string | null;
+      player_name: string | null;
+    };
+
+// Every trade a given player has ever been part of, oldest first -- a
+// player's sleeper_player_id is stable for life, so this is a direct
+// lookup with no chain-walking needed. Falls back to matching by name for
+// the handful of CSV-imported 2025 trades, which predate Sleeper-side
+// player-id tracking in this schema.
+async function getPlayerTradeHops(
+  sleeperPlayerId: string | null,
+  playerNameFallback: string | null
+): Promise<LineageHop[]> {
+  const supabase = getSupabase();
+  if (!supabase || (!sleeperPlayerId && !playerNameFallback)) return [];
+
+  let query = supabase
+    .from("trades_view")
+    .select("*")
+    .eq("item_type", "player")
+    .order("status_updated", { ascending: true });
+  query = sleeperPlayerId
+    ? query.eq("sleeper_player_id", sleeperPlayerId)
+    : query.eq("player_name", playerNameFallback as string);
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+
+  return (data as any[]).map((row) => ({
+    kind: "trade",
+    date: row.status_updated,
+    week: row.week,
+    from_team: row.previous_team_name,
+    to_team: row.team_name,
+    asset_label: row.player_name,
+  }));
+}
+
+// Walks a traded draft pick's full life: every subsequent trade of that
+// same pick (chained by previous_team_season_id -> team_season_id hops,
+// since a pick can be flipped more than once before the draft), then --
+// once the chain of trades ends -- checks whether that pick has actually
+// been used in a draft yet, and if so continues into that player's own
+// future trade history via getPlayerTradeHops.
+//
+// KNOWN LIMITATION: a team holding two picks in the same round in the same
+// season (e.g. from trading for a second team's 3rd-rounder) can't always
+// be disambiguated, since Sleeper doesn't tag a traded future pick with a
+// specific slot number until that season's draft order is actually set.
+export async function getPickLineage(
+  startTeamSeasonId: string,
+  season: number,
+  round: number
+): Promise<LineageHop[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("trades_view")
+    .select("*")
+    .eq("item_type", "draft_pick")
+    .eq("traded_pick_season", season)
+    .eq("traded_pick_round", round)
+    .order("status_updated", { ascending: true });
+  if (error || !data) return [];
+
+  const rows = data as any[];
+  const hops: LineageHop[] = [];
+  let currentTeamSeasonId: string | null = startTeamSeasonId;
+
+  let guard = 0;
+  while (guard++ < 20) {
+    const next = rows.find((r) => r.previous_team_season_id === currentTeamSeasonId);
+    if (!next) break;
+    hops.push({
+      kind: "trade",
+      date: next.status_updated,
+      week: next.week,
+      from_team: next.previous_team_name,
+      to_team: next.team_name,
+      asset_label: `${season} Round ${round} pick`,
+    });
+    currentTeamSeasonId = next.team_season_id;
+  }
+
+  const { data: draftPickRow } = await supabase
+    .from("draft_picks_view")
+    .select("*")
+    .eq("season_year", season)
+    .eq("round", round)
+    .eq("team_season_id", currentTeamSeasonId as string)
+    .maybeSingle();
+
+  if (draftPickRow) {
+    hops.push({
+      kind: "drafted",
+      season_year: (draftPickRow as any).season_year,
+      round: (draftPickRow as any).round,
+      pick_no: (draftPickRow as any).pick_no,
+      team_name: (draftPickRow as any).team_name,
+      player_name: (draftPickRow as any).player_name,
+    });
+    const playerHops = await getPlayerTradeHops(
+      (draftPickRow as any).sleeper_player_id,
+      (draftPickRow as any).player_name
+    );
+    hops.push(...playerHops);
+  }
+
+  return hops;
+}
+
+// Single entry point the Trades page's click-to-expand UI calls -- resolves
+// to the player-history walk or the pick-chain walk depending on what was
+// clicked.
+export async function getAssetLineage(
+  input:
+    | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null }
+    | { kind: "draft_pick"; startTeamSeasonId: string; season: number; round: number }
+): Promise<LineageHop[]> {
+  if (input.kind === "player") {
+    return getPlayerTradeHops(input.sleeperPlayerId, input.playerName);
+  }
+  return getPickLineage(input.startTeamSeasonId, input.season, input.round);
 }
