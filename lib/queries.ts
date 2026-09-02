@@ -1238,9 +1238,10 @@ async function getPickLineage(
   return hops;
 }
 
-// Single entry point the Trades page's click-to-expand UI calls -- resolves
-// to the player-history walk or the pick-chain walk depending on what was
-// clicked.
+// Traces an asset's OWN onward journey -- used for the "Received" side of a
+// trade card, where clicking shows where this specific pick or player goes
+// from here. Contrast with getGivenUpAssetLineage below, which starts from
+// the other side of the same trade.
 export async function getAssetLineage(
   input:
     | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null }
@@ -1250,4 +1251,39 @@ export async function getAssetLineage(
     return getPlayerTradeHops(input.sleeperPlayerId, input.playerName);
   }
   return getPickLineage(input.originalManagerId, input.season, input.round);
+}
+// what they received in return, then keep following that asset forward --
+// if it's a pick that gets traded again, drafted, and that player gets
+// traded again, all of it -- so a team can see "we gave up Josh Allen, and
+// three trades and a draft later, here's what he ultimately turned into."
+// This is the mirror image of getPickLineage/getPlayerTradeHops (which
+// trace an asset's own onward journey); this instead starts by pivoting to
+// the OTHER side of the same trade, then hands off to those same functions,
+// since both already correctly follow an asset forward through any number
+// of further hops once given the right starting point.
+export async function getGivenUpAssetLineage(
+  tradeId: string,
+  sentByTeamSeasonId: string
+): Promise<LineageHop[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("trades_view")
+    .select("*")
+    .eq("trade_id", tradeId)
+    .eq("team_season_id", sentByTeamSeasonId);
+  if (error || !data) return [];
+
+  const hops: LineageHop[] = [];
+  for (const row of data as any[]) {
+    if (row.item_type === "player") {
+      hops.push(...(await getPlayerTradeHops(row.sleeper_player_id, row.player_name)));
+    } else if (row.original_manager_id && row.traded_pick_season && row.traded_pick_round) {
+      hops.push(
+        ...(await getPickLineage(row.original_manager_id, row.traded_pick_season, row.traded_pick_round))
+      );
+    }
+  }
+  return hops;
 }
