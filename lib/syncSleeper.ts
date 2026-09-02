@@ -10,12 +10,14 @@ import {
   getWeekProjections,
   getLeagueDrafts,
   getDraftPicks,
+  getDraft,
   getLeagueTransactions,
   type SleeperMatchup,
   type BracketMatch,
   type PlayerProjections,
   type SleeperDraft,
   type SleeperDraftPick,
+  type SleeperDraftFull,
   type SleeperTransaction,
 } from "./sleeper";
 
@@ -253,13 +255,31 @@ export async function runSleeperSync(
       if (draftErr) throw draftErr;
 
       const picks: SleeperDraftPick[] = await getDraftPicks(draft.draft_id);
+
+      // slot_to_roster_id maps each pre-trade draft SLOT to whichever
+      // roster was ORIGINALLY assigned it -- independent of how many times
+      // that pick was traded away before the draft. Combined with each
+      // pick's own draft_slot, this is what lets lineage tracing later
+      // identify exactly which team's original pick became which drafted
+      // player, even when the team that ended up drafting holds several
+      // picks of the same round in the same season.
+      let slotToRosterId: Record<string, number> = {};
+      try {
+        const fullDraft: SleeperDraftFull = await getDraft(draft.draft_id);
+        slotToRosterId = fullDraft.slot_to_roster_id ?? {};
+      } catch (e) {
+        log(`Draft ${draft.draft_id}: couldn't fetch full draft object for slot mapping, original owners will be unset. ${e}`);
+      }
+
       const pickRows = picks.map((pick) => {
         const playerInfo = pick.player_id ? playerMap[pick.player_id] : undefined;
+        const originalRosterId = pick.draft_slot != null ? slotToRosterId[String(pick.draft_slot)] : undefined;
         return {
           draft_id: draftRow.id,
           round: pick.round,
           pick_no: pick.pick_no,
           team_season_id: teamSeasonIdByRosterId.get(Number(pick.roster_id)) ?? null,
+          original_manager_id: originalRosterId != null ? managerIdByRosterId.get(originalRosterId) ?? null : null,
           sleeper_player_id: pick.player_id ?? null,
           player_name: playerInfo?.full_name ?? null,
           position: playerInfo?.position ?? pick.metadata?.position ?? null,
@@ -442,14 +462,18 @@ export async function runSleeperSync(
 
       const itemRows: any[] = [];
       // `adds` maps player_id -> the roster_id that RECEIVED the player in
-      // this trade -- exactly what "who got what" needs, no need to also
-      // walk `drops` since every traded player already appears here once
-      // per side.
+      // this trade; `drops` maps the same player_id -> whichever roster
+      // GAVE UP that player. Cross-referencing the two by player_id gives
+      // both sides needed for lineage tracing (which pivots off knowing who
+      // sent an asset, not just who received it).
       for (const [playerId, rosterId] of Object.entries(trade.adds ?? {})) {
         const info = playerMap[playerId];
+        const sentByRosterId = trade.drops?.[playerId];
         itemRows.push({
           trade_id: tradeRow.id,
           team_season_id: teamSeasonIdByRosterId.get(rosterId) ?? null,
+          previous_team_season_id:
+            sentByRosterId != null ? teamSeasonIdByRosterId.get(sentByRosterId) ?? null : null,
           item_type: "player",
           sleeper_player_id: playerId,
           player_name: info?.full_name ?? null,
