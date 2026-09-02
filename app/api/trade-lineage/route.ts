@@ -8,10 +8,13 @@ export async function GET(req: NextRequest) {
   const kind = params.get("kind");
 
   if (kind === "player") {
+    const since = params.get("since");
+    if (!since) return Response.json({ error: "missing params" }, { status: 400 });
     const hops = await getAssetLineage({
       kind: "player",
       sleeperPlayerId: params.get("sleeperPlayerId"),
       playerName: params.get("playerName"),
+      since,
     });
     return Response.json({ hops });
   }
@@ -20,10 +23,11 @@ export async function GET(req: NextRequest) {
     const originalManagerId = params.get("originalManagerId");
     const season = Number(params.get("season"));
     const round = Number(params.get("round"));
-    if (!originalManagerId || !season || !round) {
+    const since = params.get("since");
+    if (!originalManagerId || !season || !round || !since) {
       return Response.json({ error: "missing params" }, { status: 400 });
     }
-    const hops = await getAssetLineage({ kind: "draft_pick", originalManagerId, season, round });
+    const hops = await getAssetLineage({ kind: "draft_pick", originalManagerId, season, round, since });
     return Response.json({ hops });
   }
 
