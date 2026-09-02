@@ -5,7 +5,8 @@ import type { LineageHop } from "@/lib/queries";
 
 type Props =
   | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null; label: string }
-  | { kind: "draft_pick"; originalManagerId: string; season: number; round: number; label: string };
+  | { kind: "draft_pick"; originalManagerId: string; season: number; round: number; label: string }
+  | { kind: "given_up"; tradeId: string; sentByTeamSeasonId: string; label: string };
 
 export default function TradeLineageButton(props: Props) {
   const [open, setOpen] = useState(false);
@@ -29,10 +30,13 @@ export default function TradeLineageButton(props: Props) {
       if (props.kind === "player") {
         if (props.sleeperPlayerId) params.set("sleeperPlayerId", props.sleeperPlayerId);
         if (props.playerName) params.set("playerName", props.playerName);
-      } else {
+      } else if (props.kind === "draft_pick") {
         params.set("originalManagerId", props.originalManagerId);
         params.set("season", String(props.season));
         params.set("round", String(props.round));
+      } else {
+        params.set("tradeId", props.tradeId);
+        params.set("sentByTeamSeasonId", props.sentByTeamSeasonId);
       }
       const res = await fetch(`/api/trade-lineage?${params.toString()}`);
       const data = await res.json();
