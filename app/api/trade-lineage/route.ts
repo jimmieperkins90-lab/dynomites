@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAssetLineage } from "@/lib/queries";
+import { getAssetLineage, getGivenUpAssetLineage } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,16 @@ export async function GET(req: NextRequest) {
       return Response.json({ error: "missing params" }, { status: 400 });
     }
     const hops = await getAssetLineage({ kind: "draft_pick", originalManagerId, season, round });
+    return Response.json({ hops });
+  }
+
+  if (kind === "given_up") {
+    const tradeId = params.get("tradeId");
+    const sentByTeamSeasonId = params.get("sentByTeamSeasonId");
+    if (!tradeId || !sentByTeamSeasonId) {
+      return Response.json({ error: "missing params" }, { status: 400 });
+    }
+    const hops = await getGivenUpAssetLineage(tradeId, sentByTeamSeasonId);
     return Response.json({ hops });
   }
 
