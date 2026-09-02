@@ -52,6 +52,7 @@ function TradeCard({ trade }: { trade: Trade }) {
                         kind="player"
                         sleeperPlayerId={item.sleeper_player_id}
                         playerName={item.player_name}
+                        since={trade.status_updated}
                         label={itemLabel(item)}
                       />
                     ) : item.original_manager_id && item.traded_pick_season && item.traded_pick_round ? (
@@ -60,6 +61,7 @@ function TradeCard({ trade }: { trade: Trade }) {
                         originalManagerId={item.original_manager_id}
                         season={item.traded_pick_season}
                         round={item.traded_pick_round}
+                        since={trade.status_updated}
                         label={itemLabel(item)}
                       />
                     ) : (
