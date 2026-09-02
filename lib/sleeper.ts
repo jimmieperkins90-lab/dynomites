@@ -78,7 +78,11 @@ export type SleeperDraft = {
 
 // roster_id comes back as a string in this endpoint's payload (unlike
 // rosters/matchups, where it's a number) -- callers should Number() it
-// before matching against teamSeasonIdByRosterId.
+// before matching against teamSeasonIdByRosterId. draft_slot identifies
+// which pre-trade draft slot this pick was made from -- combined with the
+// full draft object's slot_to_roster_id (see getDraft below), this is what
+// determines a pick's ORIGINAL owner, independent of how many times it
+// changed hands via trades before the draft.
 export type SleeperDraftPick = {
   round: number;
   pick_no: number;
@@ -87,12 +91,21 @@ export type SleeperDraftPick = {
   picked_by: string | null;
   is_keeper: boolean | null;
   draft_id: string;
+  draft_slot?: number;
   metadata?: {
     position?: string;
     first_name?: string;
     last_name?: string;
     team?: string;
   };
+};
+
+// The full draft object (distinct from the picks list) -- needed for
+// slot_to_roster_id, which maps each pre-trade draft slot to the roster it
+// was ORIGINALLY assigned to, before accounting for any picks traded away.
+export type SleeperDraftFull = {
+  draft_id: string;
+  slot_to_roster_id: Record<string, number>;
 };
 
 // Sleeper's transactions endpoint returns waivers, free-agent moves, AND
@@ -152,6 +165,10 @@ export function getLeagueDrafts(leagueId: string) {
 
 export function getDraftPicks(draftId: string) {
   return get<SleeperDraftPick[]>(`${BASE}/draft/${draftId}/picks`);
+}
+
+export function getDraft(draftId: string) {
+  return get<SleeperDraftFull>(`${BASE}/draft/${draftId}`);
 }
 
 export function getLeagueTransactions(leagueId: string, week: number) {
