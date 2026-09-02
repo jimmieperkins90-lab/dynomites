@@ -1110,12 +1110,9 @@ export async function getTickerItems(): Promise<TickerItem[]> {
 
   return items;
 }
-
 export type LineageHop =
   | {
       kind: "trade";
-      date: string;
-      week: number;
       from_team: string | null;
       to_team: string | null;
       asset_label: string;
@@ -1124,143 +1121,191 @@ export type LineageHop =
       kind: "drafted";
       season_year: number;
       round: number;
-      pick_no: number;
+      pick_label: string; // e.g. "2.10" -- round.pick-within-round, not the overall pick number
       team_name: string | null;
       player_name: string | null;
     };
 
-// Every trade a given player has ever been part of, oldest first -- a
-// player's sleeper_player_id is stable for life, so this is a direct
-// lookup with no chain-walking needed. Falls back to matching by name for
-// the handful of CSV-imported 2025 trades, which predate Sleeper-side
-// player-id tracking in this schema.
-async function getPlayerTradeHops(
-  sleeperPlayerId: string | null,
-  playerNameFallback: string | null
-): Promise<LineageHop[]> {
+type Asset =
+  | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null }
+  | { kind: "draft_pick"; originalManagerId: string; season: number; round: number };
+
+function itemLabelFromRow(row: any): string {
+  return row.item_type === "player"
+    ? row.player_name ?? "a player"
+    : `${row.traded_pick_season} Round ${row.traded_pick_round} pick`;
+}
+
+async function getTotalRostersForYear(year: number): Promise<number | null> {
   const supabase = getSupabase();
-  if (!supabase || (!sleeperPlayerId && !playerNameFallback)) return [];
+  if (!supabase) return null;
+  const { data } = await supabase.from("seasons").select("total_rosters").eq("year", year).maybeSingle();
+  return (data as any)?.total_rosters ?? null;
+}
+
+// Finds the next time this exact asset was traded away, strictly after
+// `after`. Scoping a pick by (season, round, originalManagerId) and a
+// player by sleeper_player_id (or name, for the pre-2026 CSV import) always
+// identifies one specific, unambiguous asset, even when a team holds
+// several picks of the same round in the same season.
+async function findNextTradeAway(asset: Asset, after: string): Promise<any | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
 
   let query = supabase
     .from("trades_view")
     .select("*")
-    .eq("item_type", "player")
-    .order("status_updated", { ascending: true });
-  query = sleeperPlayerId
-    ? query.eq("sleeper_player_id", sleeperPlayerId)
-    : query.eq("player_name", playerNameFallback as string);
+    .gt("status_updated", after)
+    .order("status_updated", { ascending: true })
+    .limit(1);
 
-  const { data, error } = await query;
-  if (error || !data) return [];
+  if (asset.kind === "player") {
+    if (!asset.sleeperPlayerId && !asset.playerName) return null;
+    query = query.eq("item_type", "player");
+    query = asset.sleeperPlayerId
+      ? query.eq("sleeper_player_id", asset.sleeperPlayerId)
+      : query.eq("player_name", asset.playerName as string);
+  } else {
+    query = query
+      .eq("item_type", "draft_pick")
+      .eq("traded_pick_season", asset.season)
+      .eq("traded_pick_round", asset.round)
+      .eq("original_manager_id", asset.originalManagerId);
+  }
 
-  return (data as any[]).map((row) => ({
-    kind: "trade",
-    date: row.status_updated,
-    week: row.week,
-    from_team: row.previous_team_name,
-    to_team: row.team_name,
-    asset_label: row.player_name,
-  }));
+  const { data } = await query.maybeSingle();
+  return data ?? null;
 }
 
-// Walks a traded draft pick's full life. Keyed off (season, round,
-// originalManagerId) rather than the current/previous team hop-matching
-// this used before -- a team can hold several picks of the same round in
-// the same season (e.g. from acquiring more than one team's future
-// 1st-rounder), which made season+round+current-holder ambiguous. The
-// original owner's manager identity is stable across years even for a
-// future pick whose season hasn't happened yet (so no team_seasons row
-// exists for it), which a season-specific id can't be. Once scoped this
-// way, every row IS the same specific pick, so listing them in date order
-// directly reconstructs the chain -- no hop-matching required.
-//
-// KNOWN LIMITATION: once the pick is actually drafted, matching it to the
-// resulting draft_picks row still falls back to season+round+final-holder,
-// which can't disambiguate if that holder drafted with MULTIPLE picks of
-// the same round (only possible once several distinct original picks have
-// converged on one team) -- doing better here needs Sleeper's original-
-// slot draft order data, not yet tracked.
-async function getPickLineage(
-  originalManagerId: string,
-  season: number,
-  round: number
-): Promise<LineageHop[]> {
+// The core of the feature: follows an asset forward through time. Whenever
+// it's traded away, this does NOT just record where it physically went --
+// it pivots to whatever the sending team received INSTEAD in that same
+// trade, and continues tracing THAT forward. A drafted player is treated
+// exactly the same way once a pick resolves into one: if that player is
+// later traded, the chain keeps pivoting to what was received for him, all
+// the way down. A pick that's simply held until draft day (never re-traded)
+// resolves via draft_picks_view, matched by (season, round,
+// originalManagerId) -- this is now unambiguous even when a team holds
+// multiple picks of the same round in the same season, unlike the
+// season+round+final-holder matching this used before.
+async function traceForward(asset: Asset, after: string, depth: number): Promise<LineageHop[]> {
+  if (depth > 12) return [];
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  const { data, error } = await supabase
-    .from("trades_view")
-    .select("*")
-    .eq("item_type", "draft_pick")
-    .eq("traded_pick_season", season)
-    .eq("traded_pick_round", round)
-    .eq("original_manager_id", originalManagerId)
-    .order("status_updated", { ascending: true });
-  if (error || !data) return [];
+  const nextTrade = await findNextTradeAway(asset, after);
 
-  const rows = data as any[];
-  const hops: LineageHop[] = rows.map((row) => ({
-    kind: "trade",
-    date: row.status_updated,
-    week: row.week,
-    from_team: row.previous_team_name,
-    to_team: row.team_name,
-    asset_label: `${season} Round ${round} pick`,
-  }));
+  if (nextTrade) {
+    const senderTeamSeasonId = nextTrade.previous_team_season_id;
+    if (!senderTeamSeasonId) {
+      // Can't identify who sent it (a data gap on an older trade) -- fall
+      // back to just showing the move itself rather than dead-ending.
+      return [
+        {
+          kind: "trade",
+          from_team: nextTrade.previous_team_name,
+          to_team: nextTrade.team_name,
+          asset_label: itemLabelFromRow(nextTrade),
+        },
+      ];
+    }
 
-  const finalHolderTeamSeasonId = rows.length > 0 ? rows[rows.length - 1].team_season_id : null;
-  if (!finalHolderTeamSeasonId) return hops;
+    const { data: exchangedItems } = await supabase
+      .from("trades_view")
+      .select("*")
+      .eq("trade_id", nextTrade.trade_id)
+      .eq("team_season_id", senderTeamSeasonId);
 
-  const { data: draftPickRow } = await supabase
-    .from("draft_picks_view")
-    .select("*")
-    .eq("season_year", season)
-    .eq("round", round)
-    .eq("team_season_id", finalHolderTeamSeasonId as string)
-    .maybeSingle();
-
-  if (draftPickRow) {
-    hops.push({
-      kind: "drafted",
-      season_year: (draftPickRow as any).season_year,
-      round: (draftPickRow as any).round,
-      pick_no: (draftPickRow as any).pick_no,
-      team_name: (draftPickRow as any).team_name,
-      player_name: (draftPickRow as any).player_name,
-    });
-    const playerHops = await getPlayerTradeHops(
-      (draftPickRow as any).sleeper_player_id,
-      (draftPickRow as any).player_name
-    );
-    hops.push(...playerHops);
+    const hops: LineageHop[] = [];
+    for (const item of exchangedItems ?? []) {
+      hops.push({
+        kind: "trade",
+        from_team: item.previous_team_name,
+        to_team: item.team_name,
+        asset_label: `Received: ${itemLabelFromRow(item)}`,
+      });
+      const childAsset: Asset =
+        item.item_type === "player"
+          ? { kind: "player", sleeperPlayerId: item.sleeper_player_id, playerName: item.player_name }
+          : {
+              kind: "draft_pick",
+              originalManagerId: item.original_manager_id,
+              season: item.traded_pick_season,
+              round: item.traded_pick_round,
+            };
+      hops.push(...(await traceForward(childAsset, item.status_updated, depth + 1)));
+    }
+    return hops;
   }
 
-  return hops;
+  // Not traded further. If it's a pick, check whether it's actually been
+  // used in the draft yet.
+  if (asset.kind === "draft_pick") {
+    const { data: draftRow } = await supabase
+      .from("draft_picks_view")
+      .select("*")
+      .eq("season_year", asset.season)
+      .eq("round", asset.round)
+      .eq("original_manager_id", asset.originalManagerId)
+      .maybeSingle();
+    if (!draftRow) return [];
+
+    const totalRosters = await getTotalRostersForYear(asset.season);
+    const pickLabel = totalRosters
+      ? `${asset.round}.${((draftRow as any).pick_no - 1) % totalRosters + 1}`
+      : String((draftRow as any).pick_no);
+
+    const draftedHop: LineageHop = {
+      kind: "drafted",
+      season_year: (draftRow as any).season_year,
+      round: (draftRow as any).round,
+      pick_label: pickLabel,
+      team_name: (draftRow as any).team_name,
+      player_name: (draftRow as any).player_name,
+    };
+
+    const playerHops = await traceForward(
+      {
+        kind: "player",
+        sleeperPlayerId: (draftRow as any).sleeper_player_id,
+        playerName: (draftRow as any).player_name,
+      },
+      "1970-01-01T00:00:00Z",
+      depth + 1
+    );
+    return [draftedHop, ...playerHops];
+  }
+
+  return [];
 }
 
-// Traces an asset's OWN onward journey -- used for the "Received" side of a
-// trade card, where clicking shows where this specific pick or player goes
-// from here. Contrast with getGivenUpAssetLineage below, which starts from
-// the other side of the same trade.
+// Traces an asset's OWN onward journey from the point it was received --
+// used for the "Received" side of a trade card. `since` should be the
+// current trade's date, so this only looks at what happens AFTER landing
+// here rather than replaying this pick/player's earlier history too.
 export async function getAssetLineage(
   input:
-    | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null }
-    | { kind: "draft_pick"; originalManagerId: string; season: number; round: number }
+    | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null; since: string }
+    | { kind: "draft_pick"; originalManagerId: string; season: number; round: number; since: string }
 ): Promise<LineageHop[]> {
   if (input.kind === "player") {
-    return getPlayerTradeHops(input.sleeperPlayerId, input.playerName);
+    return traceForward(
+      { kind: "player", sleeperPlayerId: input.sleeperPlayerId, playerName: input.playerName },
+      input.since,
+      0
+    );
   }
-  return getPickLineage(input.originalManagerId, input.season, input.round);
+  return traceForward(
+    { kind: "draft_pick", originalManagerId: input.originalManagerId, season: input.season, round: input.round },
+    input.since,
+    0
+  );
 }
-// what they received in return, then keep following that asset forward --
-// if it's a pick that gets traded again, drafted, and that player gets
-// traded again, all of it -- so a team can see "we gave up Josh Allen, and
-// three trades and a draft later, here's what he ultimately turned into."
-// This is the mirror image of getPickLineage/getPlayerTradeHops (which
-// trace an asset's own onward journey); this instead starts by pivoting to
-// the OTHER side of the same trade, then hands off to those same functions,
-// since both already correctly follow an asset forward through any number
-// of further hops once given the right starting point.
+
+// The "Gave up" side: given what a team sent away in a specific trade,
+// finds what they received in exchange (there may be more than one item)
+// and traces each forward from there via the same pivot-on-every-trade
+// logic as traceForward.
 export async function getGivenUpAssetLineage(
   tradeId: string,
   sentByTeamSeasonId: string
@@ -1277,13 +1322,22 @@ export async function getGivenUpAssetLineage(
 
   const hops: LineageHop[] = [];
   for (const row of data as any[]) {
-    if (row.item_type === "player") {
-      hops.push(...(await getPlayerTradeHops(row.sleeper_player_id, row.player_name)));
-    } else if (row.original_manager_id && row.traded_pick_season && row.traded_pick_round) {
-      hops.push(
-        ...(await getPickLineage(row.original_manager_id, row.traded_pick_season, row.traded_pick_round))
-      );
-    }
+    hops.push({
+      kind: "trade",
+      from_team: row.previous_team_name,
+      to_team: row.team_name,
+      asset_label: `Received: ${itemLabelFromRow(row)}`,
+    });
+    const childAsset: Asset =
+      row.item_type === "player"
+        ? { kind: "player", sleeperPlayerId: row.sleeper_player_id, playerName: row.player_name }
+        : {
+            kind: "draft_pick",
+            originalManagerId: row.original_manager_id,
+            season: row.traded_pick_season,
+            round: row.traded_pick_round,
+          };
+    hops.push(...(await traceForward(childAsset, row.status_updated, 0)));
   }
   return hops;
 }
