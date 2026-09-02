@@ -19,6 +19,7 @@ function itemLabel(item: TradeItem): string {
 
 function TradeCard({ trade }: { trade: Trade }) {
   const byTeam = groupByTeam(trade.items);
+  const teamEntries = Array.from(byTeam.entries());
   const date = new Date(trade.status_updated).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -31,35 +32,65 @@ function TradeCard({ trade }: { trade: Trade }) {
         {date} · {trade.season_year} Season · Week {trade.week}
       </p>
       <div className="grid sm:grid-cols-2 gap-4">
-        {Array.from(byTeam.entries()).map(([team, items]) => (
-          <div key={team}>
-            <p className="font-display text-lg mb-1">{team}</p>
-            <ul className="flex flex-col gap-1.5">
-              {items.map((item, i) => (
-                <li key={i} className="font-body text-sm">
-                  {item.item_type === "player" ? (
-                    <TradeLineageButton
-                      kind="player"
-                      sleeperPlayerId={item.sleeper_player_id}
-                      playerName={item.player_name}
-                      label={itemLabel(item)}
-                    />
-                  ) : item.original_manager_id && item.traded_pick_season && item.traded_pick_round ? (
-                    <TradeLineageButton
-                      kind="draft_pick"
-                      originalManagerId={item.original_manager_id}
-                      season={item.traded_pick_season}
-                      round={item.traded_pick_round}
-                      label={itemLabel(item)}
-                    />
-                  ) : (
-                    itemLabel(item)
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        {teamEntries.map(([team, receivedItems]) => {
+          const teamSeasonId = receivedItems[0]?.team_season_id ?? null;
+          // What this team gave up is simply everything the OTHER side(s)
+          // of this same trade received -- for the standard 2-team trade
+          // this is just the other column's list.
+          const gaveUpItems = teamEntries.filter(([t]) => t !== team).flatMap(([, items]) => items);
+
+          return (
+            <div key={team}>
+              <p className="font-display text-lg mb-1">{team}</p>
+
+              <p className="font-body text-xs uppercase tracking-wide opacity-50 mt-2 mb-1">Received</p>
+              <ul className="flex flex-col gap-1.5">
+                {receivedItems.map((item, i) => (
+                  <li key={i} className="font-body text-sm">
+                    {item.item_type === "player" ? (
+                      <TradeLineageButton
+                        kind="player"
+                        sleeperPlayerId={item.sleeper_player_id}
+                        playerName={item.player_name}
+                        label={itemLabel(item)}
+                      />
+                    ) : item.original_manager_id && item.traded_pick_season && item.traded_pick_round ? (
+                      <TradeLineageButton
+                        kind="draft_pick"
+                        originalManagerId={item.original_manager_id}
+                        season={item.traded_pick_season}
+                        round={item.traded_pick_round}
+                        label={itemLabel(item)}
+                      />
+                    ) : (
+                      itemLabel(item)
+                    )}
+                  </li>
+                ))}
+              </ul>
+
+              {teamSeasonId && gaveUpItems.length > 0 && (
+                <>
+                  <p className="font-body text-xs uppercase tracking-wide opacity-50 mt-3 mb-1">
+                    Gave up — click to see what it became
+                  </p>
+                  <ul className="flex flex-col gap-1.5">
+                    {gaveUpItems.map((item, i) => (
+                      <li key={i} className="font-body text-sm">
+                        <TradeLineageButton
+                          kind="given_up"
+                          tradeId={trade.trade_id}
+                          sentByTeamSeasonId={teamSeasonId}
+                          label={itemLabel(item)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
