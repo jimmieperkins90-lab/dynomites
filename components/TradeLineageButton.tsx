@@ -4,8 +4,15 @@ import { useState } from "react";
 import type { LineageHop } from "@/lib/queries";
 
 type Props =
-  | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null; label: string }
-  | { kind: "draft_pick"; originalManagerId: string; season: number; round: number; label: string }
+  | { kind: "player"; sleeperPlayerId: string | null; playerName: string | null; since: string; label: string }
+  | {
+      kind: "draft_pick";
+      originalManagerId: string;
+      season: number;
+      round: number;
+      since: string;
+      label: string;
+    }
   | { kind: "given_up"; tradeId: string; sentByTeamSeasonId: string; label: string };
 
 export default function TradeLineageButton(props: Props) {
@@ -30,10 +37,12 @@ export default function TradeLineageButton(props: Props) {
       if (props.kind === "player") {
         if (props.sleeperPlayerId) params.set("sleeperPlayerId", props.sleeperPlayerId);
         if (props.playerName) params.set("playerName", props.playerName);
+        params.set("since", props.since);
       } else if (props.kind === "draft_pick") {
         params.set("originalManagerId", props.originalManagerId);
         params.set("season", String(props.season));
         params.set("round", String(props.round));
+        params.set("since", props.since);
       } else {
         params.set("tradeId", props.tradeId);
         params.set("sentByTeamSeasonId", props.sentByTeamSeasonId);
@@ -66,13 +75,12 @@ export default function TradeLineageButton(props: Props) {
                 <li key={i} className="lineage-item">
                   {hop.kind === "trade" ? (
                     <>
-                      {hop.from_team ?? "Unknown"} → {hop.to_team ?? "Unknown"}: {hop.asset_label}{" "}
-                      (Week {hop.week})
+                      {hop.from_team ?? "Unknown"} → {hop.to_team ?? "Unknown"}: {hop.asset_label}
                     </>
                   ) : (
                     <>
                       Drafted: {hop.team_name ?? "Unknown"} took {hop.player_name ?? "a player"} (
-                      {hop.season_year} Round {hop.round}, Pick {hop.pick_no})
+                      {hop.season_year} {hop.pick_label})
                     </>
                   )}
                 </li>
