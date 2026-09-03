@@ -110,10 +110,36 @@ function BracketColumn({ title, rounds }: { title: string; rounds: PlayoffRound[
   );
 }
 
+function FilteredGameRow({ game }: { game: GameResult }) {
+  const played = game.game_played && game.home_points != null && game.away_points != null;
+  const homeWon = played && (game.home_points ?? 0) > (game.away_points ?? 0);
+  const awayWon = played && (game.away_points ?? 0) > (game.home_points ?? 0);
+
+  return (
+    <Link href={`/games/${game.home_matchup_id}`} className="block">
+      <div className="panel px-5 py-3 flex items-center justify-between gap-4 hover:border-[var(--color-gold)] transition-colors">
+        <div className="flex-1 min-w-0">
+          <p className={`font-body text-sm truncate ${homeWon ? "text-[var(--color-gold)] font-bold" : ""}`}>
+            {game.home_team_name ?? game.home_manager_name}
+          </p>
+        </div>
+        <div className="font-mono text-sm shrink-0">
+          {played ? `${fmt(game.home_points)} - ${fmt(game.away_points)}` : "—"}
+        </div>
+        <div className="flex-1 min-w-0 text-right">
+          <p className={`font-body text-sm truncate ${awayWon ? "text-[var(--color-gold)] font-bold" : ""}`}>
+            {game.away_team_name ?? game.away_manager_name ?? "Unknown"}
+          </p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export default async function SeasonsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ season?: string; view?: string }>;
+  searchParams: Promise<{ season?: string; view?: string; week?: string; team?: string }>;
 }) {
   const years = await getSeasonYears();
 
@@ -200,6 +226,35 @@ export default async function SeasonsPage({
     list.sort((a, b) => a.week - b.week);
   }
 
+  // Week/team filters -- surface a flat filtered game list below standings.
+  // Standings itself always reflects the whole season; filtering is only
+  // for browsing/finding specific games, same job the old separate Games
+  // schedule page did.
+  const allWeeks = Array.from(new Set(games.map((g) => g.week))).sort((a, b) => a - b);
+  const allTeams = Array.from(
+    new Set(games.flatMap((g) => [g.home_manager_name, g.away_manager_name].filter((m): m is string => !!m)))
+  ).sort();
+
+  const activeWeek = params.week ? parseInt(params.week, 10) : null;
+  const activeTeam = params.team ?? null;
+  const filtersActive = activeWeek != null || activeTeam != null;
+
+  const filteredGames = games.filter((g) => {
+    if (activeWeek != null && g.week !== activeWeek) return false;
+    if (activeTeam && g.home_manager_name !== activeTeam && g.away_manager_name !== activeTeam) return false;
+    return true;
+  });
+
+  function filterLink(next: { week?: number | null; team?: string | null }) {
+    const p = new URLSearchParams();
+    p.set("season", String(activeYear));
+    const week = next.week !== undefined ? next.week : activeWeek;
+    const team = next.team !== undefined ? next.team : activeTeam;
+    if (week != null) p.set("week", String(week));
+    if (team) p.set("team", team);
+    return `/standings?${p.toString()}`;
+  }
+
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
@@ -214,7 +269,7 @@ export default async function SeasonsPage({
       {standings.length === 0 ? (
         <p className="font-body opacity-60">No standings data for {activeYear} yet.</p>
       ) : (
-        <div className="panel overflow-x-auto">
+        <div className="panel overflow-x-auto mb-8">
           <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-left text-[rgba(32,32,15,0.5)] font-mono text-xs uppercase">
@@ -236,6 +291,40 @@ export default async function SeasonsPage({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      <div className="mb-6">
+        <p className="font-mono text-xs uppercase tracking-widest opacity-50 mb-2">Find a game</p>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <Link href={filterLink({ week: null })} className={pillClass(activeWeek == null)}>
+            All Weeks
+          </Link>
+          {allWeeks.map((w) => (
+            <Link key={w} href={filterLink({ week: w })} className={pillClass(activeWeek === w)}>
+              Week {w}
+            </Link>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href={filterLink({ team: null })} className={pillClass(activeTeam == null)}>
+            All Teams
+          </Link>
+          {allTeams.map((t) => (
+            <Link key={t} href={filterLink({ team: t })} className={pillClass(activeTeam === t)}>
+              {t}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {filtersActive && (
+        <div className="space-y-3">
+          {filteredGames.length === 0 ? (
+            <p className="font-body opacity-60">No games match this filter.</p>
+          ) : (
+            filteredGames.map((g) => <FilteredGameRow key={g.home_matchup_id} game={g} />)
+          )}
         </div>
       )}
     </main>
