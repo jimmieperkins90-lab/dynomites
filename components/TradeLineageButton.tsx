@@ -77,12 +77,11 @@ export default function TradeLineageButton(props: Props) {
                     <>
                       {hop.from_team ?? "Unknown"} → {hop.to_team ?? "Unknown"}: {hop.asset_label}
                     </>
-                  ) : (
-                    <>
-                      Drafted: {hop.team_name ?? "Unknown"} took {hop.player_name ?? "a player"} (
-                      {hop.season_year} {hop.pick_label})
-                    </>
-                  )}
+) : (
+  <>
+    {hop.player_name ?? "a player"} — {hop.season_year} ({hop.pick_label})
+  </>
+)}
                 </li>
               ))}
             </ol>
