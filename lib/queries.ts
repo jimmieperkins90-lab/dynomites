@@ -1320,14 +1320,14 @@ export async function getGivenUpAssetLineage(
     .eq("team_season_id", sentByTeamSeasonId);
   if (error || !data) return [];
 
+  // NOTE: deliberately does NOT push a "Received: X" hop for what this
+  // team got in THIS trade -- that's already shown in the "Received"
+  // section of this same trade card, so repeating it here would be
+  // redundant. traceForward's own internal "Received: X" hops (for a
+  // GENUINE later trade further down the chain) are unaffected -- those
+  // are new information and still show.
   const hops: LineageHop[] = [];
   for (const row of data as any[]) {
-    hops.push({
-      kind: "trade",
-      from_team: row.previous_team_name,
-      to_team: row.team_name,
-      asset_label: `Received: ${itemLabelFromRow(row)}`,
-    });
     const childAsset: Asset =
       row.item_type === "player"
         ? { kind: "player", sleeperPlayerId: row.sleeper_player_id, playerName: row.player_name }
