@@ -146,7 +146,7 @@ export default async function SeasonsPage({
   if (years.length === 0) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-10">
-        <h1 className="font-display text-4xl tracking-wide mb-4">Seasons</h1>
+        <h1 className="page-heading font-display text-4xl tracking-wide mb-4">Seasons</h1>
         <p className="font-body opacity-70">
           No seasons found. Check that the site is connected to Supabase and a sync has run.
         </p>
@@ -179,7 +179,7 @@ export default async function SeasonsPage({
     return (
       <main className="max-w-4xl mx-auto px-4 py-10">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-          <h1 className="font-display text-4xl tracking-wide">Seasons</h1>
+          <h1 className="page-heading font-display text-4xl tracking-wide">Seasons</h1>
           {yearSwitcher}
         </div>
 
@@ -258,7 +258,7 @@ export default async function SeasonsPage({
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
-        <h1 className="font-display text-4xl tracking-wide">Seasons</h1>
+        <h1 className="page-heading font-display text-4xl tracking-wide">Seasons</h1>
         {yearSwitcher}
       </div>
 
