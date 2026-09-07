@@ -103,7 +103,7 @@ export default async function TradesPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="outline font-display text-5xl tracking-wide text-center mb-2">Trade History</h1>
+      <h1 className="page-heading font-display text-5xl tracking-wide text-center mb-2">Trade History</h1>
       <p className="font-body font-semibold text-center opacity-70 mb-10">
         Every trade on record — click any player or pick to see what it became.
       </p>
