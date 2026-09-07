@@ -19,12 +19,21 @@ body {
 }
 
 /* Cream fill with a bold black outline + drop shadow -- the site's
-   signature text treatment, used for the wordmark and major headings. */
+   signature text treatment, used for the wordmark (nav logo). NOT used
+   for page headings -- see .page-heading below -- since the heavy stroke
+   reads as a boxed badge rather than a plain heading. */
 .outline {
   color: var(--color-cream);
   -webkit-text-stroke: 2px var(--color-ink);
   text-shadow: 3px 3px 0 var(--color-ink);
   paint-order: stroke fill;
+}
+
+/* Page heading treatment: cream text with a soft shadow for contrast
+   against the green background -- a plain heading, not a boxed badge. */
+.page-heading {
+  color: var(--color-cream);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25);
 }
 
 /* Rounded cream panel: the site's card convention, used for standings
