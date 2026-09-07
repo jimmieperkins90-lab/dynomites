@@ -94,7 +94,7 @@ export default async function BoxScorePage({
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
       <Link
-        href={`/games?season=${game.season_year}`}
+        href={`/standings?season=${game.season_year}&week=${game.week}`}
         className="font-mono text-xs text-[rgba(32,32,15,0.5)] hover:text-[var(--color-gold)]"
       >
         ← Back to Week {game.week}
