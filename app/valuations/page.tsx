@@ -19,7 +19,7 @@ export default async function ValuationsPage() {
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-10">
-      <h1 className="outline font-display text-4xl tracking-wide mb-4">Franchise Valuations</h1>
+      <h1 className="page-heading font-display text-4xl tracking-wide mb-4">Franchise Valuations</h1>
 
       <div className="panel p-5 mb-8">
         <p className="font-body text-sm text-[rgba(32,32,15,0.8)]">
