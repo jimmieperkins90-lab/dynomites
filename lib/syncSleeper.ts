@@ -471,8 +471,19 @@ export async function runSleeperSync(
       );
     const newSig = itemSignature(newItems);
 
+    // A manually-entered CSV date and Sleeper's actual UTC timestamp for
+    // the same real trade can legitimately land on different calendar
+    // dates (a late-night trade rolling past midnight UTC, or the CSV
+    // simply being off by a day) -- a 2-day tolerance window catches this
+    // without being so loose it risks matching a genuinely different
+    // trade. The item-signature comparison below is what actually proves
+    // it's the same trade; the date window is just a cheap first filter.
+    const newDateMs = new Date(tradeDate).getTime();
+    const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
     for (const candidate of candidates) {
-      if (String(candidate.status_updated).slice(0, 10) !== tradeDate) continue;
+      const candidateDateMs = new Date(String(candidate.status_updated).slice(0, 10)).getTime();
+      if (Math.abs(candidateDateMs - newDateMs) > TWO_DAYS_MS) continue;
 
       const { data: candidateItems } = await db
         .from("trade_items")
