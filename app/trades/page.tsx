@@ -1,4 +1,4 @@
-import { getAllTrades, type Trade, type TradeItem } from "@/lib/queries";
+import { getAllTrades, getDraftPickLabelsByOriginalOwner, type Trade, type TradeItem } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +26,30 @@ function groupByTeam(items: TradeItem[]): Map<string, TradeItem[]> {
   return map;
 }
 
-function itemLabel(item: TradeItem): string {
+// Appends a "(1.10)"-style label when this draft-pick item has already
+// been used in a draft -- a single direct lookup (see
+// getDraftPickLabelsByOriginalOwner), not a multi-hop trace.
+function itemLabel(item: TradeItem, pickLabels: Record<string, string>): string {
   if (item.item_type === "player") return item.player_name ?? "Unknown player";
-  return `${item.traded_pick_season ?? "?"} Round ${item.traded_pick_round ?? "?"} pick`;
+
+  const base = `${item.traded_pick_season ?? "?"} Round ${item.traded_pick_round ?? "?"} pick`;
+  if (item.original_manager_id && item.traded_pick_season != null && item.traded_pick_round != null) {
+    const key = `${item.traded_pick_season}-${item.traded_pick_round}-${item.original_manager_id}`;
+    const label = pickLabels[key];
+    if (label) return `${base} (${label})`;
+  }
+  return base;
 }
 
-function TeamColumn({ team, items }: { team: string; items: TradeItem[] }) {
+function TeamColumn({
+  team,
+  items,
+  pickLabels,
+}: {
+  team: string;
+  items: TradeItem[];
+  pickLabels: Record<string, string>;
+}) {
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-baseline gap-2 mb-3">
@@ -44,7 +62,7 @@ function TeamColumn({ team, items }: { team: string; items: TradeItem[] }) {
             key={j}
             className="font-body text-sm px-3 py-2 rounded bg-[rgba(32,32,15,0.04)] border-l-2 border-[var(--color-gold)]"
           >
-            {itemLabel(item)}
+            {itemLabel(item, pickLabels)}
           </li>
         ))}
       </ul>
@@ -52,7 +70,7 @@ function TeamColumn({ team, items }: { team: string; items: TradeItem[] }) {
   );
 }
 
-function TradeCard({ trade }: { trade: Trade }) {
+function TradeCard({ trade, pickLabels }: { trade: Trade; pickLabels: Record<string, string> }) {
   const byTeam = groupByTeam(trade.items);
   const teamEntries = Array.from(byTeam.entries());
 
@@ -63,7 +81,7 @@ function TradeCard({ trade }: { trade: Trade }) {
       <div className="flex flex-col sm:flex-row items-stretch gap-3 sm:gap-4">
         {teamEntries.map(([team, items], i) => (
           <div key={team} className="flex flex-col sm:flex-row items-stretch gap-3 sm:gap-4 flex-1 min-w-0">
-            <TeamColumn team={team} items={items} />
+            <TeamColumn team={team} items={items} pickLabels={pickLabels} />
             {i < teamEntries.length - 1 && (
               <>
                 <span
@@ -88,7 +106,7 @@ function TradeCard({ trade }: { trade: Trade }) {
 }
 
 export default async function TradesPage() {
-  const trades = await getAllTrades();
+  const [trades, pickLabels] = await Promise.all([getAllTrades(), getDraftPickLabelsByOriginalOwner()]);
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
@@ -104,7 +122,7 @@ export default async function TradesPage() {
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5">
           {trades.map((trade) => (
-            <TradeCard key={trade.trade_id} trade={trade} />
+            <TradeCard key={trade.trade_id} trade={trade} pickLabels={pickLabels} />
           ))}
         </div>
       )}
