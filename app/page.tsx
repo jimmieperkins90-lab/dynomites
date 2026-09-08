@@ -123,12 +123,16 @@ function DivisionChampionsRafter({ entries }: { entries: DivisionChampionEntry[]
   );
 }
 
+// Kept in sync with the current nav (components/Nav.tsx) -- /games and
+// /articles were removed from the site (games merged into /standings,
+// articles removed outright), so those two dead links were dropped here.
 const QUICK_LINKS = [
-  { href: "/standings", label: "Standings" },
-  { href: "/games", label: "Games" },
-  { href: "/history", label: "History" },
-  { href: "/articles", label: "Articles" },
+  { href: "/standings", label: "Seasons" },
+  { href: "/trades", label: "Trades" },
+  { href: "/draft", label: "Drafts" },
+  { href: "/history", label: "Records" },
   { href: "/valuations", label: "Valuations" },
+  { href: "/betting", label: "Sportsbook" },
 ];
 
 export default async function LandingPage() {
@@ -137,7 +141,7 @@ export default async function LandingPage() {
   if (years.length === 0) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-10 text-center">
-        <h1 className="outline font-display text-5xl tracking-wide mb-4">Dyno Mites</h1>
+        <h1 className="page-heading font-display text-5xl tracking-wide mb-4">Dyno Mites</h1>
         <p className="font-body opacity-70">
           No seasons found. Check that the site is connected to Supabase and a sync has run.
         </p>
@@ -173,7 +177,7 @@ export default async function LandingPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="outline font-display text-5xl tracking-wide text-center mb-2">Dyno Mites</h1>
+      <h1 className="page-heading font-display text-5xl tracking-wide text-center mb-2">Dyno Mites</h1>
       <p className="font-body font-semibold text-center opacity-70 mb-6">
         League standings, matchup history, and every champion since kickoff.
       </p>
