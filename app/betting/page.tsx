@@ -52,7 +52,7 @@ export default async function BettingPage({
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-4">
-        <h1 className="outline font-display text-4xl tracking-wide">Betting Lines</h1>
+        <h1 className="page-heading font-display text-4xl tracking-wide">Sportsbook</h1>
         <div className="flex gap-2">
           {years.map((year) => (
             <Link
