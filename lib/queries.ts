@@ -891,6 +891,57 @@ export async function getDraftHistory(): Promise<DraftPick[]> {
   if (error || !data) return [];
   return data as DraftPick[];
 }
+async function getTotalRostersByYear(): Promise<Record<number, number>> {
+  const supabase = getSupabase();
+  if (!supabase) return {};
+  const { data, error } = await supabase.from("seasons").select("year, total_rosters");
+  if (error || !data) return {};
+  const map: Record<number, number> = {};
+  for (const row of data as { year: number; total_rosters: number }[]) {
+    map[row.year] = row.total_rosters;
+  }
+  return map;
+}
+
+// Maps "season-round-originalManagerId" -> pick-within-round label (e.g.
+// "1.10") for every rookie-draft pick that's actually been drafted and has
+// a recorded original owner. Used on the Trades page to show what a
+// still-traded-away draft pick ultimately became, e.g. "2026 Round 1 pick
+// (1.10)". This is a single direct lookup (pick -> the player drafted with
+// it) -- NOT the fuller multi-hop lineage trace (see the now-unused
+// getGivenUpAssetLineage/traceForward below, if still present), which
+// pivoted through every subsequent trade and proved unreliable. A pick
+// keeps the same original_manager_id no matter how many times it's
+// re-traded before draft day, so this always resolves correctly regardless
+// of how many hands it passed through first.
+export async function getDraftPickLabelsByOriginalOwner(): Promise<Record<string, string>> {
+  const supabase = getSupabase();
+  if (!supabase) return {};
+
+  const [{ data: pickRows, error: pickError }, rosterCounts] = await Promise.all([
+    supabase
+      .from("draft_picks_view")
+      .select("season_year, round, original_manager_id, pick_no")
+      .not("original_manager_id", "is", null),
+    getTotalRostersByYear(),
+  ]);
+  if (pickError || !pickRows) return {};
+
+  const labels: Record<string, string> = {};
+  for (const row of pickRows as {
+    season_year: number;
+    round: number;
+    original_manager_id: string;
+    pick_no: number;
+  }[]) {
+    const totalRosters = rosterCounts[row.season_year];
+    const label = totalRosters
+      ? `${row.round}.${((row.pick_no - 1) % totalRosters) + 1}`
+      : String(row.pick_no);
+    labels[`${row.season_year}-${row.round}-${row.original_manager_id}`] = label;
+  }
+  return labels;
+}
 
 export type TradeItem = {
   team_season_id: string | null;
