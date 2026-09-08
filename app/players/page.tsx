@@ -53,7 +53,7 @@ export default async function PlayersPage({
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="outline font-display text-4xl tracking-wide mb-8">Best Performances</h1>
+      <h1 className="page-heading font-display text-4xl tracking-wide mb-8">Best Performances</h1>
 
       <section className="mb-12">
         <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">
