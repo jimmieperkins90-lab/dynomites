@@ -31,7 +31,7 @@ export default async function DraftPage({
   if (picks.length === 0) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-10">
-        <h1 className="outline font-display text-4xl tracking-wide mb-4">Draft History</h1>
+        <h1 className="page-heading font-display text-4xl tracking-wide mb-4">Draft History</h1>
         <p className="font-body opacity-70">
           No draft data synced yet. Run the Sleeper sync to pull the initial draft and rookie drafts.
         </p>
@@ -86,7 +86,7 @@ export default async function DraftPage({
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="outline font-display text-4xl tracking-wide mb-6">Draft History</h1>
+      <h1 className="page-heading font-display text-4xl tracking-wide mb-6">Draft History</h1>
 
       <div className="mb-10">
         <DraftFilters
