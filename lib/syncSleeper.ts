@@ -434,6 +434,66 @@ export async function runSleeperSync(
   // stop early the way the matchups loop does. Only type === "trade" &&
   // status === "complete" entries are kept -- waivers and free-agent
   // adds/drops are ignored here.
+
+  // If a newly-synced REAL Sleeper trade turns out to duplicate a trade
+  // that was previously entered by hand via the manual CSV import (see
+  // trades.sleeper_transaction_id values like "manual-csv-t1".."t6"),
+  // remove the CSV row -- the real synced trade, carrying an actual
+  // Sleeper transaction id, is authoritative going forward. This is what
+  // silently produced duplicate trade cards on the Trades page before
+  // (same real trade recorded once by hand, once automatically) with no
+  // cleanup step to catch it.
+  //
+  // Matches on same calendar date + same set of items (by player name /
+  // pick season+round) rather than an exact timestamp or sleeper_player_id,
+  // since CSV rows carry no sleeper_player_id and their status_updated is
+  // midnight-of-day, not the real trade time.
+  async function dedupeAgainstManualCsv(
+    seasonId: string,
+    newTradeId: string,
+    tradeDate: string,
+    newItems: any[]
+  ) {
+    const { data: candidates } = await db
+      .from("trades")
+      .select("id, sleeper_transaction_id, status_updated")
+      .eq("season_id", seasonId)
+      .like("sleeper_transaction_id", "manual-csv-%");
+    if (!candidates || candidates.length === 0) return;
+
+    const itemSignature = (items: any[]) =>
+      new Set(
+        items.map((it) =>
+          it.item_type === "player"
+            ? `player:${(it.player_name ?? "").trim().toLowerCase()}`
+            : `pick:${it.traded_pick_season}-${it.traded_pick_round}`
+        )
+      );
+    const newSig = itemSignature(newItems);
+
+    for (const candidate of candidates) {
+      if (String(candidate.status_updated).slice(0, 10) !== tradeDate) continue;
+
+      const { data: candidateItems } = await db
+        .from("trade_items")
+        .select("item_type, player_name, traded_pick_season, traded_pick_round")
+        .eq("trade_id", candidate.id);
+      if (!candidateItems) continue;
+
+      const candidateSig = itemSignature(candidateItems);
+      const isMatch =
+        candidateSig.size === newSig.size && [...candidateSig].every((s) => newSig.has(s));
+
+      if (isMatch) {
+        await db.from("trade_items").delete().eq("trade_id", candidate.id);
+        await db.from("trades").delete().eq("id", candidate.id);
+        log(
+          `Removed duplicate manual-CSV trade ${candidate.sleeper_transaction_id} -- superseded by newly-synced trade ${newTradeId}.`
+        );
+      }
+    }
+  }
+
   for (let week = 1; week <= 18; week++) {
     let transactions: SleeperTransaction[];
     try {
@@ -497,6 +557,13 @@ export async function runSleeperSync(
         const { error: itemErr } = await db.from("trade_items").insert(itemRows);
         if (itemErr) throw itemErr;
       }
+
+      await dedupeAgainstManualCsv(
+        season.id,
+        tradeRow.id,
+        new Date(trade.status_updated).toISOString().slice(0, 10),
+        itemRows
+      );
     }
 
     if (trades.length) log(`Week ${week}: synced ${trades.length} trade(s).`);
