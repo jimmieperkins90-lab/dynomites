@@ -1,4 +1,10 @@
-import { getSeasonYears, getProjectedLines, getProjectedWinTotals, type ProjectedLine } from "@/lib/queries";
+import {
+  getSeasonYears,
+  getProjectedLines,
+  getProjectedWinTotals,
+  getLineResult,
+  type ProjectedLine,
+} from "@/lib/queries";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +26,16 @@ function groupByWeek(lines: ProjectedLine[]): { week: number; games: ProjectedLi
   return Array.from(map.entries())
     .sort(([a], [b]) => a - b)
     .map(([week, games]) => ({ week, games }));
+}
+
+// A week can be fully in the past, fully upcoming, or (most Sundays) a mix
+// of both -- this drives the small status tag next to the week header so
+// it's obvious at a glance which weeks are done vs. still open.
+function weekStatus(games: ProjectedLine[]): "Final" | "In Progress" | "Upcoming" {
+  const playedCount = games.filter((g) => g.game_played).length;
+  if (playedCount === 0) return "Upcoming";
+  if (playedCount === games.length) return "Final";
+  return "In Progress";
 }
 
 export default async function BettingPage({
@@ -72,7 +88,8 @@ export default async function BettingPage({
       <p className="font-body text-sm text-[rgba(32,32,15,0.6)] mb-10">
         Lines and win totals are generated from your league&apos;s own projected lineups — not a real
         sportsbook. Only regular-season games with a synced projection are shown, so this typically
-        covers the next several unplayed weeks rather than the full remaining schedule.
+        covers the next several unplayed weeks rather than the full remaining schedule. Weeks stay
+        listed after they&apos;re played, graded against the final score.
       </p>
 
       <section className="mb-12">
@@ -118,44 +135,140 @@ export default async function BettingPage({
           <p className="font-body opacity-60">No projected games available right now.</p>
         ) : (
           <div className="space-y-3">
-            {weeks.map(({ week, games }) => (
-              <details key={week} className="panel group">
-                <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between">
-                  <span className="font-display text-lg tracking-wide">Week {week}</span>
-                  <span className="font-mono text-xs text-[rgba(32,32,15,0.5)]">
-                    {games.length} game{games.length === 1 ? "" : "s"} · click to expand
-                  </span>
-                </summary>
-                <div className="px-5 pb-5 space-y-4 border-t border-[rgba(32,32,15,0.12)] pt-4">
-                  {games.map((line) => (
-                    <div key={line.matchup_id} className="panel p-5">
-                      <div className="flex items-center justify-between gap-4 flex-wrap">
-                        <div className="flex-1 min-w-[140px]">
-                          <p className="font-body font-bold">{line.home_team_name ?? line.home_manager_name}</p>
-                          <p className="font-mono text-sm mt-1">{line.home_projected.toFixed(1)} proj.</p>
-                          <p className="font-mono text-sm mt-2">
-                            <span className="text-[var(--color-gold)] font-bold">{formatSpread(line.spread)}</span>
-                            <span className="text-[rgba(32,32,15,0.5)]"> · ML {formatOdds(line.home_moneyline)}</span>
-                          </p>
+            {weeks.map(({ week, games }) => {
+              const status = weekStatus(games);
+              return (
+                <details key={week} className="panel group">
+                  <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <span className="font-display text-lg tracking-wide">Week {week}</span>
+                      <span
+                        className={`font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded ${
+                          status === "Final"
+                            ? "bg-[rgba(32,32,15,0.08)] text-[rgba(32,32,15,0.55)]"
+                            : status === "In Progress"
+                            ? "bg-[var(--color-gold)] text-[var(--color-ink)]"
+                            : "bg-[rgba(32,32,15,0.06)] text-[rgba(32,32,15,0.45)]"
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    </span>
+                    <span className="font-mono text-xs text-[rgba(32,32,15,0.5)]">
+                      {games.length} game{games.length === 1 ? "" : "s"} · click to expand
+                    </span>
+                  </summary>
+                  <div className="px-5 pb-5 space-y-4 border-t border-[rgba(32,32,15,0.12)] pt-4">
+                    {games.map((line) => {
+                      const result = getLineResult(line);
+                      const homeName = line.home_team_name ?? line.home_manager_name;
+                      const awayName = line.away_team_name ?? line.away_manager_name;
+
+                      if (result) {
+                        // Played -- show the final score and grade all three bet types.
+                        return (
+                          <div key={line.matchup_id} className="panel p-5">
+                            <div className="flex items-center justify-between gap-4 flex-wrap">
+                              <div className="flex-1 min-w-[140px]">
+                                <p
+                                  className={`font-body font-bold ${
+                                    result.moneyline === "home" ? "text-[var(--color-gold)]" : ""
+                                  }`}
+                                >
+                                  {result.moneyline === "home" ? "✓ " : ""}
+                                  {homeName}
+                                </p>
+                                <p className="font-mono text-lg font-bold mt-1">
+                                  {(line.home_points ?? 0).toFixed(1)}
+                                </p>
+                                <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] mt-1">
+                                  proj. {line.home_projected.toFixed(1)}
+                                </p>
+                              </div>
+                              <div className="text-center px-4">
+                                <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase">O/U {line.over_under}</p>
+                                <p className="font-mono text-sm font-bold mt-1">
+                                  {((line.home_points ?? 0) + (line.away_points ?? 0)).toFixed(1)}
+                                </p>
+                                <p className="font-mono text-[10px] uppercase text-[rgba(32,32,15,0.5)] mt-1">
+                                  {result.overUnder === "push" ? "Push" : result.overUnder}
+                                </p>
+                              </div>
+                              <div className="flex-1 min-w-[140px] text-right">
+                                <p
+                                  className={`font-body font-bold ${
+                                    result.moneyline === "away" ? "text-[var(--color-gold)]" : ""
+                                  }`}
+                                >
+                                  {awayName}
+                                  {result.moneyline === "away" ? " ✓" : ""}
+                                </p>
+                                <p className="font-mono text-lg font-bold mt-1">
+                                  {(line.away_points ?? 0).toFixed(1)}
+                                </p>
+                                <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] mt-1">
+                                  proj. {line.away_projected.toFixed(1)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-dashed border-[rgba(32,32,15,0.15)] flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-[rgba(32,32,15,0.6)]">
+                              <span>
+                                ML:{" "}
+                                {result.moneyline === "tie"
+                                  ? "Tie"
+                                  : `${result.moneyline === "home" ? homeName : awayName} won`}
+                              </span>
+                              <span>
+                                Spread ({formatSpread(line.spread)}):{" "}
+                                {result.spread === "push"
+                                  ? "Push"
+                                  : `${result.spread === "home" ? homeName : awayName} covered`}
+                              </span>
+                              <span>
+                                O/U ({line.over_under}):{" "}
+                                {result.overUnder === "push"
+                                  ? "Push"
+                                  : result.overUnder === "over"
+                                  ? "Over hit"
+                                  : "Under hit"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Not played yet -- original pregame odds display.
+                      return (
+                        <div key={line.matchup_id} className="panel p-5">
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex-1 min-w-[140px]">
+                              <p className="font-body font-bold">{homeName}</p>
+                              <p className="font-mono text-sm mt-1">{line.home_projected.toFixed(1)} proj.</p>
+                              <p className="font-mono text-sm mt-2">
+                                <span className="text-[var(--color-gold)] font-bold">{formatSpread(line.spread)}</span>
+                                <span className="text-[rgba(32,32,15,0.5)]"> · ML {formatOdds(line.home_moneyline)}</span>
+                              </p>
+                            </div>
+                            <div className="text-center px-4">
+                              <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase">O/U</p>
+                              <p className="font-body">{line.over_under}</p>
+                            </div>
+                            <div className="flex-1 min-w-[140px] text-right">
+                              <p className="font-body font-bold">{awayName}</p>
+                              <p className="font-mono text-sm mt-1">{line.away_projected.toFixed(1)} proj.</p>
+                              <p className="font-mono text-sm mt-2">
+                                <span className="text-[rgba(32,32,15,0.5)]">ML {formatOdds(line.away_moneyline)} · </span>
+                                <span className="text-[var(--color-gold)] font-bold">{formatSpread(-line.spread)}</span>
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-center px-4">
-                          <p className="font-mono text-xs text-[rgba(32,32,15,0.5)] uppercase">O/U</p>
-                          <p className="font-body">{line.over_under}</p>
-                        </div>
-                        <div className="flex-1 min-w-[140px] text-right">
-                          <p className="font-body font-bold">{line.away_team_name ?? line.away_manager_name}</p>
-                          <p className="font-mono text-sm mt-1">{line.away_projected.toFixed(1)} proj.</p>
-                          <p className="font-mono text-sm mt-2">
-                            <span className="text-[rgba(32,32,15,0.5)]">ML {formatOdds(line.away_moneyline)} · </span>
-                            <span className="text-[var(--color-gold)] font-bold">{formatSpread(-line.spread)}</span>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            ))}
+                      );
+                    })}
+                  </div>
+                </details>
+              );
+            })}
           </div>
         )}
       </section>
