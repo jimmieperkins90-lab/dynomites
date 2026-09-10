@@ -426,6 +426,34 @@ export async function runSleeperSync(
           const { error: lineupErr } = await db.from("lineups").insert(lineupRows as any[]);
           if (lineupErr) throw lineupErr;
         }
+
+        // Freeze this team's Sportsbook line for the week, but ONLY while
+        // the week hasn't started yet (week > currentNflWeek). Every sync
+        // run before kickoff overwrites this with the latest projection
+        // (so it still tracks roster moves/injuries right up until the
+        // week begins) -- once currentNflWeek reaches this week, this
+        // upsert is simply skipped forever, permanently locking in
+        // whatever was captured on the last pre-kickoff run. This is what
+        // stops the Sportsbook's lines from drifting mid-week as real
+        // stats replace projections (Thursday played, Sunday played,
+        // Monday still to go, etc.) -- see getFrozenProjections/
+        // getProjectedLines in lib/queries.ts, which read from this table
+        // instead of the live per-week projected sum.
+        if (week > currentNflWeek) {
+          const startedProjectedSum = lineupRows
+            .filter((r): r is NonNullable<typeof r> => r !== null && r.started)
+            .reduce((sum, r) => sum + (r.projected_points ?? 0), 0);
+          const { error: freezeErr } = await db.from("frozen_week_lines").upsert(
+            {
+              season_id: season.id,
+              week,
+              team_season_id: teamSeasonId,
+              projected_points: startedProjectedSum,
+            },
+            { onConflict: "season_id,week,team_season_id" }
+          );
+          if (freezeErr) throw freezeErr;
+        }
       }
     }
 
