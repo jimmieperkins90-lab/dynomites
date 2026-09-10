@@ -18,6 +18,18 @@ function formatSpread(n: number): string {
   return n > 0 ? `-${n}` : `+${Math.abs(n)}`;
 }
 
+// Converts a raw expected-wins number (e.g. 9.1076, the output of a win-
+// probability simulation) into a proper sportsbook-style win total line:
+// always a half-point (X.5), never a whole number, so the total itself can
+// never push. Rounds to the nearest half first (to stay close to the true
+// expectation), then nudges up off any whole number that rounding happens
+// to land on.
+function toWinTotalLine(expected: number): number {
+  let line = Math.round(expected * 2) / 2;
+  if (Number.isInteger(line)) line += 0.5;
+  return line;
+}
+
 function groupByWeek(lines: ProjectedLine[]): { week: number; games: ProjectedLine[] }[] {
   const map = new Map<number, ProjectedLine[]>();
   for (const line of lines) {
@@ -87,43 +99,48 @@ export default async function BettingPage({
       </div>
       <p className="font-body text-sm text-[rgba(32,32,15,0.6)] mb-10">
         Lines and win totals are generated from your league&apos;s own projected lineups — not a real
-        sportsbook. Only regular-season games with a synced projection are shown, so this typically
-        covers the next several unplayed weeks rather than the full remaining schedule. Weeks stay
-        listed after they&apos;re played, graded against the final score.
+        sportsbook. Season win totals are shown as a half-point line (e.g. 9.5), same as a real
+        sportsbook total, so there&apos;s never a push. Only regular-season games with a synced
+        projection are shown below, so this typically covers the next several unplayed weeks rather
+        than the full remaining schedule. A week&apos;s line locks the moment it begins and stays
+        listed afterward, graded against the final score.
       </p>
 
       <section className="mb-12">
-        <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Projected Win Totals</h2>
+        <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Season Win Totals</h2>
         <div className="panel overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="text-left text-[rgba(32,32,15,0.5)] font-mono text-xs uppercase">
                 <th className="px-4 py-3 font-normal">Team</th>
                 <th className="px-4 py-3 font-normal text-right">Current W-L</th>
-                <th className="px-4 py-3 font-normal text-right">Preseason Proj.</th>
-                <th className="px-4 py-3 font-normal text-right">+Proj.</th>
-                <th className="px-4 py-3 font-normal text-right">Current Proj.</th>
+                <th className="px-4 py-3 font-normal text-right">Preseason Line</th>
+                <th className="px-4 py-3 font-normal text-right">Current Line</th>
               </tr>
             </thead>
             <tbody>
-              {winTotals.map((row) => (
-                <tr key={row.team_season_id} className="border-t border-[rgba(32,32,15,0.12)]">
-                  <td className="px-4 py-2.5 font-body">{row.team_name ?? row.manager_name}</td>
-                  <td className="px-4 py-2.5 font-mono text-right">
-                    {row.wins}-{row.losses}
-                    {row.ties > 0 ? `-${row.ties}` : ""}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.5)]">
-                    {row.preseason_projected_wins != null ? row.preseason_projected_wins.toFixed(1) : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.6)]">
-                    {row.games_with_projections > 0 ? `+${row.projected_additional_wins.toFixed(2)}` : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-right text-[var(--color-gold)] font-bold">
-                    {row.projected_final_wins.toFixed(1)}
-                  </td>
-                </tr>
-              ))}
+              {winTotals
+                .slice()
+                .sort((a, b) => {
+                  const aLine = a.preseason_projected_wins != null ? toWinTotalLine(a.projected_final_wins) : a.projected_final_wins;
+                  const bLine = b.preseason_projected_wins != null ? toWinTotalLine(b.projected_final_wins) : b.projected_final_wins;
+                  return bLine - aLine;
+                })
+                .map((row) => (
+                  <tr key={row.team_season_id} className="border-t border-[rgba(32,32,15,0.12)]">
+                    <td className="px-4 py-2.5 font-body">{row.team_name ?? row.manager_name}</td>
+                    <td className="px-4 py-2.5 font-mono text-right">
+                      {row.wins}-{row.losses}
+                      {row.ties > 0 ? `-${row.ties}` : ""}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.5)]">
+                      {row.preseason_projected_wins != null ? toWinTotalLine(row.preseason_projected_wins).toFixed(1) : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-right text-[var(--color-gold)] font-bold">
+                      {toWinTotalLine(row.projected_final_wins).toFixed(1)}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
