@@ -773,10 +773,14 @@ export type ProjectedLine = {
   over_under: number;
 };
 
-// Betting-style lines for every unplayed game in a season that currently has
-// projections synced (Sleeper generally only has projections for the next
-// unplayed week, not the whole remaining schedule -- games further out will
-// simply be absent from the returned list until their projections exist).
+// Betting-style lines for every unplayed REGULAR-SEASON game in a season
+// that currently has a projection synced. Playoff-week games (is_playoff)
+// are deliberately excluded here -- Sleeper pre-generates bracket
+// placeholder matchups (and their projections) well before the playoffs
+// start, which was leaking weeks 15-18 into the Sportsbook alongside the
+// real weeks 1-14 lines. Regular-season games get projections synced for
+// every remaining week at once (not just the next unplayed one, despite
+// what an earlier version of this comment assumed).
 export async function getProjectedLines(year: number): Promise<ProjectedLine[]> {
   const [games, sigma] = await Promise.all([
     getGamesForSeason(year),
@@ -787,6 +791,7 @@ export async function getProjectedLines(year: number): Promise<ProjectedLine[]> 
   const lines: ProjectedLine[] = [];
   for (const g of games) {
     if (g.game_played || !g.away_team_season_id) continue;
+    if (g.is_playoff) continue;
     if (g.home_projected_points == null || g.away_projected_points == null) continue;
 
     const diff = g.home_projected_points - g.away_projected_points;
@@ -811,21 +816,55 @@ export async function getProjectedLines(year: number): Promise<ProjectedLine[]> 
   return lines;
 }
 
+export type PreseasonProjection = {
+  team_season_id: string;
+  projected_wins: number;
+};
+
+// Reads the FROZEN preseason win-total simulation from
+// preseason_win_projections -- captured once (via a one-off backfill
+// simulating the full 14-week regular season with the same win-probability
+// model as getProjectedLines/getProjectedWinTotals below) and never
+// overwritten afterward. This is what lets the Sportsbook show a
+// "Preseason Proj." column that doesn't move, alongside the live "Current
+// Proj." column that does.
+export async function getPreseasonWinProjections(year: number): Promise<PreseasonProjection[]> {
+  const supabase = getSupabase();
+  if (!supabase) return [];
+  const { data: season } = await supabase.from("seasons").select("id").eq("year", year).maybeSingle();
+  if (!season) return [];
+  const { data, error } = await supabase
+    .from("preseason_win_projections")
+    .select("team_season_id, projected_wins")
+    .eq("season_id", season.id);
+  if (error || !data) return [];
+  return data.map((r: any) => ({
+    team_season_id: r.team_season_id,
+    projected_wins: Number(r.projected_wins),
+  }));
+}
+
 export type ProjectedStandingsRow = StandingsRow & {
   projected_additional_wins: number;
   projected_final_wins: number;
   games_with_projections: number;
+  preseason_projected_wins: number | null;
 };
 
 // Current standings plus each team's win total nudged forward by the win
 // probability of every game that currently has a projection available. This
 // is necessarily partial -- see the caveat on getProjectedLines -- it is NOT
 // a full rest-of-season projection, only what's projectable right now.
+// Also attaches the frozen preseason_projected_wins snapshot (see
+// getPreseasonWinProjections) so the UI can show both numbers side by side.
 export async function getProjectedWinTotals(year: number): Promise<ProjectedStandingsRow[]> {
-  const [standings, lines] = await Promise.all([
+  const [standings, lines, preseason] = await Promise.all([
     getStandingsForSeason(year),
     getProjectedLines(year),
+    getPreseasonWinProjections(year),
   ]);
+
+  const preseasonByTeam = new Map(preseason.map((p) => [p.team_season_id, p.projected_wins]));
 
   const addedWins = new Map<string, number>();
   const gameCounts = new Map<string, number>();
@@ -851,6 +890,7 @@ export async function getProjectedWinTotals(year: number): Promise<ProjectedStan
         projected_additional_wins: additional,
         projected_final_wins: row.wins + additional,
         games_with_projections: gameCounts.get(row.manager_name) ?? 0,
+        preseason_projected_wins: preseasonByTeam.get(row.team_season_id) ?? null,
       };
     })
     .sort((a, b) => b.projected_final_wins - a.projected_final_wins);
