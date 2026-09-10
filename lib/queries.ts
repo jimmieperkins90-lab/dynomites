@@ -771,16 +771,31 @@ export type ProjectedLine = {
   away_moneyline: number;
   spread: number; // positive = home favored by this many points
   over_under: number;
+  game_played: boolean;
+  home_points: number | null;
+  away_points: number | null;
 };
 
-// Betting-style lines for every unplayed REGULAR-SEASON game in a season
-// that currently has a projection synced. Playoff-week games (is_playoff)
-// are deliberately excluded here -- Sleeper pre-generates bracket
-// placeholder matchups (and their projections) well before the playoffs
-// start, which was leaking weeks 15-18 into the Sportsbook alongside the
-// real weeks 1-14 lines. Regular-season games get projections synced for
-// every remaining week at once (not just the next unplayed one, despite
-// what an earlier version of this comment assumed).
+// Betting-style lines for every REGULAR-SEASON game in a season that
+// currently has a projection synced -- both upcoming AND already-played
+// games are included (game_played/home_points/away_points are attached to
+// each line so callers, e.g. the Sportsbook page, can keep showing a
+// week's card after it's over and grade it against the actual result,
+// rather than the week just disappearing once it's played). Playoff-week
+// games (is_playoff) are deliberately excluded here -- Sleeper
+// pre-generates bracket placeholder matchups (and their projections) well
+// before the playoffs start, which was leaking weeks 15-18 into the
+// Sportsbook alongside the real weeks 1-14 lines. Regular-season games get
+// projections synced for every remaining week at once (not just the next
+// unplayed one, despite what an earlier version of this comment assumed),
+// and the projection numbers stick around after a game is played too
+// (the sync doesn't clear them), which is what makes grading possible.
+//
+// NOTE: callers that want the live "what's left to happen" win-probability
+// sum (see getProjectedWinTotals below) need to filter this list down to
+// `!line.game_played` themselves -- this function intentionally returns
+// everything so the Sportsbook's week-by-week display doesn't have to
+// re-fetch/re-derive played games separately.
 export async function getProjectedLines(year: number): Promise<ProjectedLine[]> {
   const [games, sigma] = await Promise.all([
     getGamesForSeason(year),
@@ -790,7 +805,7 @@ export async function getProjectedLines(year: number): Promise<ProjectedLine[]> 
 
   const lines: ProjectedLine[] = [];
   for (const g of games) {
-    if (g.game_played || !g.away_team_season_id) continue;
+    if (!g.away_team_season_id) continue;
     if (g.is_playoff) continue;
     if (g.home_projected_points == null || g.away_projected_points == null) continue;
 
@@ -811,9 +826,37 @@ export async function getProjectedLines(year: number): Promise<ProjectedLine[]> 
       away_moneyline: probToMoneyline(1 - homeWinProb),
       spread: Math.round(diff * 2) / 2,
       over_under: Math.round((g.home_projected_points + g.away_projected_points) * 2) / 2,
+      game_played: g.game_played,
+      home_points: g.home_points,
+      away_points: g.away_points,
     });
   }
   return lines;
+}
+
+export type LineResult = {
+  moneyline: "home" | "away" | "tie";
+  spread: "home" | "away" | "push";
+  overUnder: "over" | "under" | "push";
+};
+
+// Grades a played line against its three bet types. Returns null for a game
+// that hasn't been played yet (or is missing a final score), so callers can
+// tell "no result yet" apart from an actual push.
+export function getLineResult(line: ProjectedLine): LineResult | null {
+  if (!line.game_played || line.home_points == null || line.away_points == null) return null;
+
+  const diff = line.home_points - line.away_points;
+  const moneyline: LineResult["moneyline"] = diff > 0 ? "home" : diff < 0 ? "away" : "tie";
+
+  const spreadDiff = diff - line.spread; // >0 means home beat the spread
+  const spread: LineResult["spread"] = spreadDiff > 0 ? "home" : spreadDiff < 0 ? "away" : "push";
+
+  const total = line.home_points + line.away_points;
+  const overUnder: LineResult["overUnder"] =
+    total > line.over_under ? "over" : total < line.over_under ? "under" : "push";
+
+  return { moneyline, spread, overUnder };
 }
 
 export type PreseasonProjection = {
@@ -852,17 +895,23 @@ export type ProjectedStandingsRow = StandingsRow & {
 };
 
 // Current standings plus each team's win total nudged forward by the win
-// probability of every game that currently has a projection available. This
-// is necessarily partial -- see the caveat on getProjectedLines -- it is NOT
-// a full rest-of-season projection, only what's projectable right now.
+// probability of every UNPLAYED game that currently has a projection
+// available. This is necessarily partial -- see the caveat on
+// getProjectedLines -- it is NOT a full rest-of-season projection, only
+// what's projectable right now. getProjectedLines now returns played AND
+// unplayed games together (so the Sportsbook's week view can grade past
+// weeks), so this filters down to `!game_played` itself -- otherwise an
+// already-decided game would get counted twice: once for real, in
+// row.wins, and again here via its win probability.
 // Also attaches the frozen preseason_projected_wins snapshot (see
 // getPreseasonWinProjections) so the UI can show both numbers side by side.
 export async function getProjectedWinTotals(year: number): Promise<ProjectedStandingsRow[]> {
-  const [standings, lines, preseason] = await Promise.all([
+  const [standings, allLines, preseason] = await Promise.all([
     getStandingsForSeason(year),
     getProjectedLines(year),
     getPreseasonWinProjections(year),
   ]);
+  const lines = allLines.filter((line) => !line.game_played);
 
   const preseasonByTeam = new Map(preseason.map((p) => [p.team_season_id, p.projected_wins]));
 
