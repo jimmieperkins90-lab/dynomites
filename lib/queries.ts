@@ -776,6 +776,30 @@ export type ProjectedLine = {
   away_points: number | null;
 };
 
+// Reads the FROZEN per-team projected points from frozen_week_lines --
+// synced every run for any week that HASN'T started yet (so a future
+// week's line keeps tracking roster/injury changes right up until
+// kickoff), and left untouched forever once a week begins (see
+// syncSleeper.ts, where the write only happens when `week > currentNflWeek`
+// at sync time). Keyed by `${week}-${team_season_id}` so getProjectedLines
+// can look up each side of a matchup independently.
+export async function getFrozenProjections(year: number): Promise<Map<string, number>> {
+  const supabase = getSupabase();
+  const map = new Map<string, number>();
+  if (!supabase) return map;
+  const { data: season } = await supabase.from("seasons").select("id").eq("year", year).maybeSingle();
+  if (!season) return map;
+  const { data, error } = await supabase
+    .from("frozen_week_lines")
+    .select("week, team_season_id, projected_points")
+    .eq("season_id", season.id);
+  if (error || !data) return map;
+  for (const row of data as { week: number; team_season_id: string; projected_points: number }[]) {
+    map.set(`${row.week}-${row.team_season_id}`, Number(row.projected_points));
+  }
+  return map;
+}
+
 // Betting-style lines for every REGULAR-SEASON game in a season that
 // currently has a projection synced -- both upcoming AND already-played
 // games are included (game_played/home_points/away_points are attached to
@@ -785,11 +809,15 @@ export type ProjectedLine = {
 // games (is_playoff) are deliberately excluded here -- Sleeper
 // pre-generates bracket placeholder matchups (and their projections) well
 // before the playoffs start, which was leaking weeks 15-18 into the
-// Sportsbook alongside the real weeks 1-14 lines. Regular-season games get
-// projections synced for every remaining week at once (not just the next
-// unplayed one, despite what an earlier version of this comment assumed),
-// and the projection numbers stick around after a game is played too
-// (the sync doesn't clear them), which is what makes grading possible.
+// Sportsbook alongside the real weeks 1-14 lines.
+//
+// The projected points used to build each line come from
+// getFrozenProjections wherever a frozen row exists, NOT from the live
+// game_results view -- once a week begins, its line must stop moving even
+// though the underlying lineups/projected_points keep changing all week as
+// real stats roll in (Thursday played, Sunday played, Monday still to go,
+// etc). A week that hasn't been frozen yet (a gap, or before this feature
+// existed) falls back to the live view's value so nothing goes blank.
 //
 // NOTE: callers that want the live "what's left to happen" win-probability
 // sum (see getProjectedWinTotals below) need to filter this list down to
@@ -797,9 +825,10 @@ export type ProjectedLine = {
 // everything so the Sportsbook's week-by-week display doesn't have to
 // re-fetch/re-derive played games separately.
 export async function getProjectedLines(year: number): Promise<ProjectedLine[]> {
-  const [games, sigma] = await Promise.all([
+  const [games, sigma, frozen] = await Promise.all([
     getGamesForSeason(year),
     getLeagueScoreStdDev(),
+    getFrozenProjections(year),
   ]);
   const combinedSigma = sigma * Math.SQRT2;
 
@@ -807,9 +836,12 @@ export async function getProjectedLines(year: number): Promise<ProjectedLine[]> 
   for (const g of games) {
     if (!g.away_team_season_id) continue;
     if (g.is_playoff) continue;
-    if (g.home_projected_points == null || g.away_projected_points == null) continue;
 
-    const diff = g.home_projected_points - g.away_projected_points;
+    const homeProjected = frozen.get(`${g.week}-${g.home_team_season_id}`) ?? g.home_projected_points;
+    const awayProjected = frozen.get(`${g.week}-${g.away_team_season_id}`) ?? g.away_projected_points;
+    if (homeProjected == null || awayProjected == null) continue;
+
+    const diff = homeProjected - awayProjected;
     const homeWinProb = normalCdf(diff / combinedSigma);
 
     lines.push({
@@ -817,15 +849,15 @@ export async function getProjectedLines(year: number): Promise<ProjectedLine[]> 
       week: g.week,
       home_manager_name: g.home_manager_name,
       home_team_name: g.home_team_name,
-      home_projected: g.home_projected_points,
+      home_projected: homeProjected,
       away_manager_name: g.away_manager_name ?? "Unknown",
       away_team_name: g.away_team_name,
-      away_projected: g.away_projected_points,
+      away_projected: awayProjected,
       home_win_prob: homeWinProb,
       home_moneyline: probToMoneyline(homeWinProb),
       away_moneyline: probToMoneyline(1 - homeWinProb),
       spread: Math.round(diff * 2) / 2,
-      over_under: Math.round((g.home_projected_points + g.away_projected_points) * 2) / 2,
+      over_under: Math.round((homeProjected + awayProjected) * 2) / 2,
       game_played: g.game_played,
       home_points: g.home_points,
       away_points: g.away_points,
