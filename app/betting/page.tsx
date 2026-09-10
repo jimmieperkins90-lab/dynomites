@@ -71,20 +71,21 @@ export default async function BettingPage({
       </div>
       <p className="font-body text-sm text-[rgba(32,32,15,0.6)] mb-10">
         Lines and win totals are generated from your league&apos;s own projected lineups — not a real
-        sportsbook. Only games with a synced projection are shown, so this typically covers the next
-        unplayed week rather than the full remaining schedule.
+        sportsbook. Only regular-season games with a synced projection are shown, so this typically
+        covers the next several unplayed weeks rather than the full remaining schedule.
       </p>
 
       <section className="mb-12">
         <h2 className="font-display text-xl text-[var(--color-rust)] mb-4 tracking-wide">Projected Win Totals</h2>
         <div className="panel overflow-x-auto">
-          <table className="w-full text-sm min-w-[480px]">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-left text-[rgba(32,32,15,0.5)] font-mono text-xs uppercase">
                 <th className="px-4 py-3 font-normal">Team</th>
                 <th className="px-4 py-3 font-normal text-right">Current W-L</th>
+                <th className="px-4 py-3 font-normal text-right">Preseason Proj.</th>
                 <th className="px-4 py-3 font-normal text-right">+Proj.</th>
-                <th className="px-4 py-3 font-normal text-right">Proj. Total</th>
+                <th className="px-4 py-3 font-normal text-right">Current Proj.</th>
               </tr>
             </thead>
             <tbody>
@@ -94,6 +95,9 @@ export default async function BettingPage({
                   <td className="px-4 py-2.5 font-mono text-right">
                     {row.wins}-{row.losses}
                     {row.ties > 0 ? `-${row.ties}` : ""}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.5)]">
+                    {row.preseason_projected_wins != null ? row.preseason_projected_wins.toFixed(1) : "—"}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-right text-[rgba(32,32,15,0.6)]">
                     {row.games_with_projections > 0 ? `+${row.projected_additional_wins.toFixed(2)}` : "—"}
