@@ -12,6 +12,7 @@ import {
   getDraftPicks,
   getDraft,
   getLeagueTransactions,
+  getNFLState,
   type SleeperMatchup,
   type BracketMatch,
   type PlayerProjections,
@@ -60,6 +61,19 @@ export async function runSleeperSync(
   log(
     `League: ${league.name} (${league.season}), status=${league.status}, previous_league_id=${league.previous_league_id}`
   );
+
+  // The real current NFL week, independent of any team's scoring. Used
+  // below to decide whether a fantasy week's matchups are actually
+  // finished -- a fantasy week is only "played" once the NFL has moved
+  // past it entirely, NOT the moment any single point trickles in from an
+  // early game (e.g. Thursday Night Football). Previously this was
+  // inferred from `weekMatchups.some((m) => m.points > 0)`, which flagged
+  // an ENTIRE week's matchups as game_played=true the instant even one
+  // roster had any nonzero points -- marking every game "final" off a
+  // single Thursday-night game with 15 other games still to be played.
+  const nflState = await getNFLState();
+  const currentNflWeek = nflState.week;
+  log(`Current NFL week per Sleeper state: ${currentNflWeek} (season_type=${nflState.season_type})`);
 
   // ---- seasons -------------------------------------------------------
   const { data: season, error: seasonErr } = await db
@@ -329,7 +343,12 @@ export async function runSleeperSync(
       byMatchupId.set(m.matchup_id, arr);
     }
 
-    const anyPointsThisWeek = weekMatchups.some((m) => m.points > 0);
+    // A fantasy week is only considered "played" once the real NFL has
+    // moved past it entirely (see currentNflWeek above) -- NOT based on
+    // whether any points have posted yet. This replaces the old
+    // `weekMatchups.some((m) => m.points > 0)` check, which flagged every
+    // matchup in the week as game_played=true off a single early game.
+    const isWeekPlayed = week < currentNflWeek;
 
     for (const [sleeperMatchupId, pair] of byMatchupId) {
       const [a, b] = pair;
@@ -349,7 +368,7 @@ export async function runSleeperSync(
           sleeper_matchup_id: sleeperMatchupId,
           points: a.points,
           opponent_points: b?.points ?? null,
-          game_played: anyPointsThisWeek,
+          game_played: isWeekPlayed,
           is_playoff: isPlayoffWeek,
           phase: bracketInfoA?.phase ?? (isPlayoffWeek ? null : "regular"),
           round_game: bracketInfoA?.round_game ?? null,
@@ -366,7 +385,7 @@ export async function runSleeperSync(
           sleeper_matchup_id: sleeperMatchupId,
           points: b.points,
           opponent_points: a.points,
-          game_played: anyPointsThisWeek,
+          game_played: isWeekPlayed,
           is_playoff: isPlayoffWeek,
           phase: bracketInfoB?.phase ?? (isPlayoffWeek ? null : "regular"),
           round_game: bracketInfoB?.round_game ?? null,
