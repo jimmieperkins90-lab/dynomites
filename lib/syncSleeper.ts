@@ -12,7 +12,7 @@ import {
   getDraftPicks,
   getDraft,
   getLeagueTransactions,
-  getNFLState,
+  getNflState,
   type SleeperMatchup,
   type BracketMatch,
   type PlayerProjections,
@@ -71,7 +71,7 @@ export async function runSleeperSync(
   // an ENTIRE week's matchups as game_played=true the instant even one
   // roster had any nonzero points -- marking every game "final" off a
   // single Thursday-night game with 15 other games still to be played.
-  const nflState = await getNFLState();
+  const nflState = await getNflState();
   const currentNflWeek = nflState.week;
   log(`Current NFL week per Sleeper state: ${currentNflWeek} (season_type=${nflState.season_type})`);
 
